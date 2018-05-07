@@ -1,6 +1,7 @@
 var audio = require('audio-stream');
 var pcm = require('pcm-stream');
 var wave = require('./wave-stream');
+var agent = require('superagent');
 
 var getUserMedia = navigator.getUserMedia ||
 	navigator.webkitGetUserMedia ||
@@ -63,8 +64,20 @@ record.addEventListener('click', function() {
 						bitDepth: 16
 					});
                 })
-                .on('data', function() {
+                .on('data', function(data) {
+                    console.log('data: ', data);
+                    agent.post('/upload')
+                        .send({
+                            testdata: data
+                        })
+                        .set('accept', 'json')
+                        .end((err, res) => {
+                            if (err) {
+                                console.error(err);
+                            }
 
+                            console.log('res in upload: ', res);
+                        });
                 })
 				.pipe(pcm())
 				.pipe(w)
