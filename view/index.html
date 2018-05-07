@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+
+    <link href="css/index.css" rel="stylesheet" >
+  </head>
+  <body>
+    <div class="demo-content">
+        <h1>Speech Demo</h1>
+        <div class="record-controls">
+            <button id="record-button">Record</button>
+            <button id="pause-button" disabled>Pause</button>
+            <button id="stop-button" disabled>Stop</button>
+        </div>
+        <div class="audio-box">
+            <span id="duration">00:00</span>
+            <audio id="player" controls></audio>
+        </div>
+        <a id="download" style="display: none" download="microphone.wav" href="">Download</a>
+    </div>
+
+    <script type="text/javascript" src="js/bundle.js"></script>
+  </body>
+</html>
