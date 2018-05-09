@@ -1,8 +1,7 @@
 var audio = require('audio-stream');
 var pcm = require('pcm-stream');
 var wave = require('./wave-stream');
-var agent = require('superagent');
-var trans = require('./trans');
+// var trans = require('./trans');
 
 var io = require('socket.io-client');
 var socket = io('http://localhost:3000');
@@ -42,11 +41,11 @@ var duration = document.getElementById('duration');
 var player = document.getElementById('player');
 var download = document.getElementById('download');
 
-var l16stream = new trans({ writableObjectMode: true });
+// var l16stream = new trans({ writableObjectMode: true });
 
-l16stream.on('data', function(data) {
-	console.log('data in l16stream: ', data);
-});
+// l16stream.on('data', function(data) {
+// 	console.log('data in l16stream: ', data);
+// });
 
 record.addEventListener('click', function() {
 	// volume.setAttribute('disabled', 'disabled');
@@ -80,10 +79,10 @@ record.addEventListener('click', function() {
 
 			sourceStream
 				.on('header', function(header) {
-					var channels = header.channels;
-					var sampleRate = header.sampleRate;
-					// var channels = 1;
-					// var sampleRate = 16000;
+					// var channels = header.channels;
+					// var sampleRate = header.sampleRate;
+					var channels = 1;
+					var sampleRate = 16000;
 
 					console.log('channel and sampleRate in header: ', sampleRate, channels);
 					w.setHeader({
@@ -96,23 +95,22 @@ record.addEventListener('click', function() {
 					});
 				})
 				.on('data', function(data) {
-					// function buf2hex(buffer) { // buffer is an ArrayBuffer
-					// 	return Array.prototype.map.call(new Uint16Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
-					// }
+					function buf2hex(buffer) { // buffer is an ArrayBuffer
+						return Array.prototype.map.call(new Uint16Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
+					}
 
 					// const emitData = new TextDecoder("utf-8").decode(data, {
 					// 	stream: true
 					// });
-					// const emitData = buf2hex(data.buffer);
+					const emitData = buf2hex(data.buffer);
 
-					// console.log('emitData: ', emitData);
+					console.log('emitData: ', emitData);
 					socket.emit('request', {
-						data: data.buffer,
+						data: emitData,
 						end: false
 					});
 				})
 				.pipe(pcm())
-				.pipe(l16stream)
 				.pipe(w)
 				.on('url', function(url) {
 					player.src = url;

@@ -38,18 +38,18 @@ io.on('connection', function(socket) {
       });
     }
 
-    console.log('req.data: ', typeof req.data, req);
-    
     if (req) {
       
-      const buffer = Buffer.from(req.data);
+      // const buffer = new Buffer(req.data);
+      // console.log('filterData in server: ', filterData, buffer.toString('utf16le').length, filterData.toString('utf16le').length);
+      const bytes = new ByteBuffer.fromHex(req.data.toString('utf16le'));
+      const buffer = bytes.toBuffer();
       const filterData = Samplerate.resample(buffer, originalSamplerate, targetSamplerate, channels);
-      console.log('filterData in server: ', filterData, buffer.toString('utf16le').length, filterData.toString('utf16le').length);
-      const bytes = new ByteBuffer.fromHex(new Uint16Array(filterData).toString('utf16le'));
     
+      console.log('buffer vs filterData: ', bytes.length, buffer.length);
       const queryData = {
         // data: new Buffer(req.data),
-        data: bytes.toBuffer(),
+        data: buffer,
         eof: req.end ? 1 : 0,
         deviceId: 'ephotons test',
         audio_type: 'pcm'
