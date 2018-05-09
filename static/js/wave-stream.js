@@ -37,6 +37,7 @@ var WaveStream = function() {
 
 	this.once('finish', function() {
 		var buffer = self._buffer;
+		console.log('self.length: ', self._length);
 		buffer[0] = writeHeader(self._length, self._header);
 
 		var blob = new Blob(buffer, { type: 'audio/wav' });

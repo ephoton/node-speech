@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package speech;
+
+option java_multiple_files = true;
+option java_package = "io.naturali.grpc";
+option java_outer_classname = "SpeechProto";
+
+service Streaming {
+    rpc Speech(stream SpeechData) returns (stream SpeechResult) {}
+}
+
+// --------------streaming-----------------
+
+message SpeechData {
+    bytes data = 1;
+    int32 eof = 2;
+    string deviceId = 3;
+    bytes ni_query = 4;
+    string channel = 5;
+    string version_name = 6;
+    string version_code = 7;
+    string model = 8;
+    string network_type = 9;
+    string audio_type = 10;
+    string device_info = 11;
+}
+
+message SpeechResult {
+    string result = 1;
+    int32 error_code = 2;
+    bytes ni_query_result = 3;
+    bool end_vad = 4;
+}
