@@ -9,7 +9,8 @@ const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
 const protobuf = require("protobufjs");
 const ByteBuffer = require("bytebuffer");
-const Samplerate = require("node-samplerate");
+const Samplerate = require("node-samplerate");;
+const pcm = require('pcm-util')
 
 const originalSamplerate = 44100;
 const channels = 1;
@@ -24,6 +25,15 @@ const io = require('socket.io')(server);
 const speechResponse = [];
 let caller;
 
+function toByteArray(hexString) {
+  var result = [];
+  while (hexString.length >= 2) {
+    result.push(parseInt(hexString.substring(0, 2), 16));
+    hexString = hexString.substring(2, hexString.length);
+  }
+  return result;
+}
+
 io.on('connection', function(socket) {
   socket.on('request', function(req) {
     if (!caller) {
@@ -37,19 +47,38 @@ io.on('connection', function(socket) {
         console.log('call ended: ', res);
       });
     }
-
+          
     if (req) {
       
-      // const buffer = new Buffer(req.data);
       // console.log('filterData in server: ', filterData, buffer.toString('utf16le').length, filterData.toString('utf16le').length);
-      const bytes = new ByteBuffer.fromHex(req.data.toString('utf16le'));
-      const buffer = bytes.toBuffer();
-      const filterData = Samplerate.resample(buffer, originalSamplerate, targetSamplerate, channels);
+
+      // const data = Uint16Array.from(buffer);
+      // console.log('req.data: ', typeof req.data, req.data);
+      
+      // const formatBuffer = pcm.convert(req.data, {
+      //   channels: 1,
+      //   sampleRate: 44100,
+      //   // samplesPerFrame: 2048,
+      //   // byteOrder: 'BE'
+      // }, {
+      //   channels: 1,
+      //   sampleRate: 16000,
+      //   // samplesPerFrame: 1024,
+      //   // byteOrder: 'LE'
+      // });
+
+      // const buffer = bytes.toBuffer();
+      // const filterData = Samplerate.resample(buffer, originalSamplerate, targetSamplerate, channels);
     
-      console.log('buffer vs filterData: ', bytes.length, buffer.length);
+      // console.log('buffer vs filterData: ', bytes.length, buffer.length);
+      // console.log('req data: ', req.data);
+      const bytes = new ByteBuffer.fromHex(req.data);
+      
+      const byteArray = toByteArray(req.data);
+      // console.log('byteArray: ', byteArray);
       const queryData = {
         // data: new Buffer(req.data),
-        data: buffer,
+        data: bytes.toBuffer(),
         eof: req.end ? 1 : 0,
         deviceId: 'ephotons test',
         audio_type: 'pcm'
@@ -69,6 +98,10 @@ app.use(StaticCache(Path.resolve(__dirname, './static')));
 
 router.get('/', (ctx, next) => {
   return ctx.render('index', {});
+});
+
+router.get('/test', (ctx, next) => {
+  return ctx.render('test', {});
 });
 
 app.use(router.routes())

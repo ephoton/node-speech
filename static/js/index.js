@@ -1,6 +1,7 @@
 var audio = require('audio-stream');
 var pcm = require('pcm-stream');
 var wave = require('./wave-stream');
+const convert = require('pcm-convert');
 // var trans = require('./trans');
 
 var io = require('socket.io-client');
@@ -77,12 +78,24 @@ record.addEventListener('click', function() {
 				channels: 1
 			});
 
+			const pcmStream = pcm();
+			// pcmStream.on('data', data => {
+			// 	console.log('pcm stream data: ', data);
+			// 	let uint16 = convert(data, 'uint16');
+			// 	socket.emit('request', {
+			// 		data: uint16.buffer,
+			// 		end: false
+			// 	});
+			// }).on('end', res => {
+			// 	console.log('res in end: ', res);
+			// });
+
 			sourceStream
 				.on('header', function(header) {
-					// var channels = header.channels;
-					// var sampleRate = header.sampleRate;
-					var channels = 1;
-					var sampleRate = 16000;
+					var channels = header.channels;
+					var sampleRate = header.sampleRate;
+					// var channels = 1;
+					// var sampleRate = 16000;
 
 					console.log('channel and sampleRate in header: ', sampleRate, channels);
 					w.setHeader({
@@ -95,22 +108,24 @@ record.addEventListener('click', function() {
 					});
 				})
 				.on('data', function(data) {
-					function buf2hex(buffer) { // buffer is an ArrayBuffer
-						return Array.prototype.map.call(new Uint16Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
-					}
+					// console.log('data in onData: ', typeof data.buffer, data);
+					// function buf2hex(buffer) { // buffer is an ArrayBuffer
+					// 	return Array.prototype.map.call(new Uint16Array(buffer), x => ('00' + x.toString(16)).slice(-2)).join('');
+					// }
 
 					// const emitData = new TextDecoder("utf-8").decode(data, {
 					// 	stream: true
 					// });
-					const emitData = buf2hex(data.buffer);
+					// const emitData = buf2hex(data);
 
-					console.log('emitData: ', emitData);
+					const emitData = Array.from(data);
+					console.log(' emitData: ', typeof emitData, emitData);
 					socket.emit('request', {
 						data: emitData,
 						end: false
 					});
 				})
-				.pipe(pcm())
+				.pipe(pcmStream)
 				.pipe(w)
 				.on('url', function(url) {
 					player.src = url;

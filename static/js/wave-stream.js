@@ -1,5 +1,7 @@
 var stream = require('stream');
 var util = require('util');
+let fs = require('fs');
+let wav = require('node-wav');
 
 var HEADER_LENGTH = 44;
 var EMPTY_BUFFER = new Buffer(0);

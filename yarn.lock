@@ -118,6 +118,108 @@ async@^1.4.0:
   version "1.5.2"
   resolved "https://registry.yarnpkg.com/async/-/async-1.5.2.tgz#ec6a61ae56480c0c3cb241c95618e20892f9672a"
 
+atob-lite@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/atob-lite/-/atob-lite-1.0.0.tgz#b88dca6006922b962094f7556826bab31c4a296b"
+
+audio-buffer-list@^2.0.6:
+  version "2.0.7"
+  resolved "https://registry.yarnpkg.com/audio-buffer-list/-/audio-buffer-list-2.0.7.tgz#88be6e835174329552b01433025c27c7ad7cf5d6"
+  dependencies:
+    audio-buffer "^3.0.0"
+    audio-buffer-utils "^4.1.1"
+    inherits "^2.0.3"
+    is-audio-buffer "^1.0.5"
+    is-plain-obj "^1.1.0"
+    negative-index "^1.0.2"
+    object-assign "^4.1.1"
+
+audio-buffer-utils@^4.0.0, audio-buffer-utils@^4.1.1, audio-buffer-utils@^4.3.0:
+  version "4.3.2"
+  resolved "https://registry.yarnpkg.com/audio-buffer-utils/-/audio-buffer-utils-4.3.2.tgz#d555faed8d6ceeb120619e39fa691374f2103380"
+  dependencies:
+    audio-buffer "^3.1.1"
+    audio-context "^1.0.0"
+    clamp "^1.0.1"
+    is-audio-buffer "^1.0.0"
+    is-browser "^2.0.1"
+    negative-index "^1.0.2"
+    typedarray-methods "^1.0.0"
+
+audio-buffer@^2.4.5:
+  version "2.4.6"
+  resolved "https://registry.yarnpkg.com/audio-buffer/-/audio-buffer-2.4.6.tgz#2f97bdb2bb9ca46d22d3b01d4334f49924eba260"
+  dependencies:
+    audio-context latest
+    buffer-to-arraybuffer latest
+    is-audio-buffer "^1.0.1"
+    is-browser "^2.0.1"
+    is-buffer "^1.1.0"
+
+audio-buffer@^3.0.0, audio-buffer@^3.1.1:
+  version "3.2.1"
+  resolved "https://registry.yarnpkg.com/audio-buffer/-/audio-buffer-3.2.1.tgz#cbff2c1577fb0afc5c9232902d543b2f96dd433d"
+  dependencies:
+    audio-context "^1.0.0"
+    buffer-to-arraybuffer latest
+    is-audio-buffer "^1.0.1"
+    is-browser "^2.0.1"
+    is-buffer "^1.1.0"
+    is-plain-obj "^1.1.0"
+
+audio-buffer@^4.0.1:
+  version "4.0.4"
+  resolved "https://registry.yarnpkg.com/audio-buffer/-/audio-buffer-4.0.4.tgz#cdb03855a951a1c2931ac1e7b00a9d9d3a4d4858"
+  dependencies:
+    audio-context "^1.0.0"
+
+audio-context@^1.0.0, audio-context@^1.0.3, audio-context@latest:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/audio-context/-/audio-context-1.0.3.tgz#aae5636691a8cdc15fc91059704cbc7c2fb7abf9"
+
+audio-format@^2.3.2:
+  version "2.3.2"
+  resolved "https://registry.yarnpkg.com/audio-format/-/audio-format-2.3.2.tgz#f23fc73b308c6dfba1904da6d4cd9c7621731abd"
+  dependencies:
+    is-audio-buffer "^1.0.11"
+    is-buffer "^1.1.5"
+    is-plain-obj "^1.1.0"
+    pick-by-alias "^1.2.0"
+    sample-rate "^2.0.0"
+
+audio-generator@^2.1.2:
+  version "2.1.2"
+  resolved "https://registry.yarnpkg.com/audio-generator/-/audio-generator-2.1.2.tgz#94484fa1f6af947b8da03862f4dcee84b7bcd5a9"
+  dependencies:
+    audio-buffer "^2.4.5"
+    audio-buffer-utils "^4.0.0"
+    audio-through "^2.0.1"
+    inherits "^2.0.1"
+    pcm-util "^2.0.3"
+    xtend "^4.0.0"
+
+audio-sink@^1.0.2:
+  version "1.1.6"
+  resolved "https://registry.yarnpkg.com/audio-sink/-/audio-sink-1.1.6.tgz#e1454eb1378522298d2170b7cb032c33fd1f6885"
+  dependencies:
+    inherits "^2.0.1"
+    xtend "^4.0.1"
+
+audio-speaker@^1.5.0:
+  version "1.5.0"
+  resolved "https://registry.yarnpkg.com/audio-speaker/-/audio-speaker-1.5.0.tgz#49496e1a9b343d428119e2855f1184ee82d4ee53"
+  dependencies:
+    audio-through "^2.2.3"
+    inherits "^2.0.1"
+    is-audio-buffer "^1.0.1"
+    object-assign "^4.1.1"
+    pcm-util "^2.1.0"
+    pull-stream "^3.4.5"
+    web-audio-stream "^3.0.1"
+  optionalDependencies:
+    audio-sink "^1.0.2"
+    speaker "^0.3.0"
+
 audio-stream@^0.2.0:
   version "0.2.0"
   resolved "https://registry.yarnpkg.com/audio-stream/-/audio-stream-0.2.0.tgz#d324c29ee32ba93a004d5a88bbe881d145465d0c"
@@ -125,6 +227,19 @@ audio-stream@^0.2.0:
     debug "^2.2.0"
     once "^1.3.2"
     xtend "^4.0.0"
+
+audio-through@^2.0.1, audio-through@^2.2.3:
+  version "2.2.3"
+  resolved "https://registry.yarnpkg.com/audio-through/-/audio-through-2.2.3.tgz#14fc8c37b613d1c870cfaee04bf4454c28959fbf"
+  dependencies:
+    audio-buffer "^3.1.1"
+    audio-context "^1.0.0"
+    inherits "^2.0.1"
+    is-audio-buffer "^1.0.1"
+    is-promise "^2.1.0"
+    object-assign "^4.1.1"
+    pcm-util "^2.0.1"
+    performance-now "^2.1.0"
 
 backo2@1.0.2:
   version "1.0.2"
@@ -148,9 +263,17 @@ better-assert@~1.0.0:
   dependencies:
     callsite "1.0.0"
 
+bindings@^1.2.1:
+  version "1.3.0"
+  resolved "https://registry.yarnpkg.com/bindings/-/bindings-1.3.0.tgz#b346f6ecf6a95f5a815c5839fc7cdb22502f1ed7"
+
 bindings@~1.2.1:
   version "1.2.1"
   resolved "https://registry.yarnpkg.com/bindings/-/bindings-1.2.1.tgz#14ad6113812d2d37d72e67b4cacb4bb726505f11"
+
+blob-to-buffer@^1.2.7:
+  version "1.2.7"
+  resolved "https://registry.yarnpkg.com/blob-to-buffer/-/blob-to-buffer-1.2.7.tgz#bd8eee0aef300b509e2305ad752cde8c14e6499c"
 
 blob@0.0.4:
   version "0.0.4"
@@ -166,6 +289,10 @@ brace-expansion@^1.1.7:
 buffer-from@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/buffer-from/-/buffer-from-1.0.0.tgz#4cb8832d23612589b0406e9e2956c17f06fdf531"
+
+buffer-to-arraybuffer@latest:
+  version "0.0.5"
+  resolved "https://registry.yarnpkg.com/buffer-to-arraybuffer/-/buffer-to-arraybuffer-0.0.5.tgz#6064a40fa76eb43c723aba9ef8f6e1216d10511a"
 
 bytebuffer@~5:
   version "5.0.1"
@@ -199,6 +326,10 @@ center-align@^0.1.1:
 chownr@^1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/chownr/-/chownr-1.0.1.tgz#e2a75042a9551908bebd25b8523d5f9769d79181"
+
+clamp@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/clamp/-/clamp-1.0.1.tgz#66a0e64011816e37196828fdc8c8c147312c8634"
 
 cliui@^2.1.0:
   version "2.1.0"
@@ -293,6 +424,10 @@ copy-to@^2.0.1:
 core-util-is@~1.0.0:
   version "1.0.2"
   resolved "https://registry.yarnpkg.com/core-util-is/-/core-util-is-1.0.2.tgz#b5fd54220aa2bc5ab57aab7140c940754503c1a7"
+
+data-uri-regex@^0.1.2:
+  version "0.1.4"
+  resolved "https://registry.yarnpkg.com/data-uri-regex/-/data-uri-regex-0.1.4.tgz#1e1db6c8397eca8a48ecdb55ad1b927ec0bbac2e"
 
 debug@*, debug@^3.1.0, debug@~3.1.0:
   version "3.1.0"
@@ -532,7 +667,7 @@ inflight@^1.0.4:
     once "^1.3.0"
     wrappy "1"
 
-inherits@2, inherits@2.0.3, inherits@~2.0.3:
+inherits@2, inherits@2.0.3, inherits@^2.0.1, inherits@^2.0.3, inherits@~2.0.3:
   version "2.0.3"
   resolved "https://registry.yarnpkg.com/inherits/-/inherits-2.0.3.tgz#633c2c83e3da42a502f52466022480f4208261de"
 
@@ -548,9 +683,23 @@ invert-kv@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/invert-kv/-/invert-kv-1.0.0.tgz#104a8e4aaca6d3d8cd157a8ef8bfab2d7a3ffdb6"
 
-is-buffer@^1.1.5:
+is-audio-buffer@^1.0.0, is-audio-buffer@^1.0.1, is-audio-buffer@^1.0.11, is-audio-buffer@^1.0.5:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/is-audio-buffer/-/is-audio-buffer-1.1.0.tgz#f4c7f274d20180f993f9b1650768cb77bedd4470"
+
+is-browser@^2.0.1:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/is-browser/-/is-browser-2.0.1.tgz#8bf0baf799a9c62fd9de5bcee4cf3397c3e7529a"
+
+is-buffer@^1.1.0, is-buffer@^1.1.5:
   version "1.1.6"
   resolved "https://registry.yarnpkg.com/is-buffer/-/is-buffer-1.1.6.tgz#efaa2ea9daa0d7ab2ea13a97b2b8ad51fefbe8be"
+
+is-data-uri@^0.1.0:
+  version "0.1.0"
+  resolved "https://registry.yarnpkg.com/is-data-uri/-/is-data-uri-0.1.0.tgz#46ee67b63c18c1ffa0bd4dfab2cd2c81c728237f"
+  dependencies:
+    data-uri-regex "^0.1.2"
 
 is-fullwidth-code-point@^1.0.0:
   version "1.0.0"
@@ -561,6 +710,18 @@ is-fullwidth-code-point@^1.0.0:
 is-generator-function@^1.0.3:
   version "1.0.7"
   resolved "https://registry.yarnpkg.com/is-generator-function/-/is-generator-function-1.0.7.tgz#d2132e529bb0000a7f80794d4bdf5cd5e5813522"
+
+is-negative-zero@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/is-negative-zero/-/is-negative-zero-2.0.0.tgz#9553b121b0fac28869da9ed459e20c7543788461"
+
+is-plain-obj@^1.1.0:
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/is-plain-obj/-/is-plain-obj-1.1.0.tgz#71a50c8429dfca773c92a390a4a03b39fcd51d3e"
+
+is-promise@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/is-promise/-/is-promise-2.1.0.tgz#79a2a9ece7f096e80f36d2b2f3bc16c1ff4bf3fa"
 
 isarray@0.0.1:
   version "0.0.1"
@@ -762,7 +923,7 @@ mz@^2.7.0:
     object-assign "^4.0.1"
     thenify-all "^1.0.0"
 
-nan@^2.0.0, nan@^2.1.0:
+nan@^2.0.0, nan@^2.1.0, nan@^2.2.0:
   version "2.10.0"
   resolved "https://registry.yarnpkg.com/nan/-/nan-2.10.0.tgz#96d0cd610ebd58d4b4de9cc0c6828cda99c7548f"
 
@@ -773,6 +934,12 @@ needle@^2.2.0:
     debug "^2.1.2"
     iconv-lite "^0.4.4"
     sax "^1.2.4"
+
+negative-index@^1.0.2:
+  version "1.0.2"
+  resolved "https://registry.yarnpkg.com/negative-index/-/negative-index-1.0.2.tgz#bb0b349f9de80879326cfa54c56fb6b67ca4788d"
+  dependencies:
+    is-negative-zero "^2.0.0"
 
 negotiator@0.6.1:
   version "0.6.1"
@@ -799,6 +966,10 @@ node-samplerate@^0.2.1:
   dependencies:
     bindings "~1.2.1"
     nan "^2.1.0"
+
+node-wav@^0.0.2:
+  version "0.0.2"
+  resolved "https://registry.yarnpkg.com/node-wav/-/node-wav-0.0.2.tgz#89cb63cf8cd66ec8ab455f5ba4864e5fcb4605e8"
 
 nopt@^4.0.1:
   version "4.0.1"
@@ -831,7 +1002,7 @@ number-is-nan@^1.0.0:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/number-is-nan/-/number-is-nan-1.0.1.tgz#097b602b53422a522c1afb8790318336941a011d"
 
-object-assign@^4.0.1, object-assign@^4.1.0:
+object-assign@^4.0.1, object-assign@^4.1.0, object-assign@^4.1.1:
   version "4.1.1"
   resolved "https://registry.yarnpkg.com/object-assign/-/object-assign-4.1.1.tgz#2109adc7965887cfc05cbbd442cac8bfbb360863"
 
@@ -913,9 +1084,43 @@ path-to-regexp@^1.1.1:
   dependencies:
     isarray "0.0.1"
 
+pcm-convert@^1.6.5:
+  version "1.6.5"
+  resolved "https://registry.yarnpkg.com/pcm-convert/-/pcm-convert-1.6.5.tgz#81b5f2d0c2fb386edb8b9f69ce2374e093aeb7cc"
+  dependencies:
+    audio-format "^2.3.2"
+    is-audio-buffer "^1.0.11"
+    is-buffer "^1.1.5"
+    object-assign "^4.1.1"
+
 pcm-stream@^1.0.0:
   version "1.0.0"
   resolved "https://registry.yarnpkg.com/pcm-stream/-/pcm-stream-1.0.0.tgz#a2bdab097a14cfad236227e3a36fa9e5e9170e47"
+
+pcm-util@^2.0.1, pcm-util@^2.0.3, pcm-util@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/pcm-util/-/pcm-util-2.1.0.tgz#51ace46b09e0117fb92f654f632dcb2ed9c86065"
+  dependencies:
+    audio-buffer "^3.0.0"
+    is-audio-buffer "^1.0.1"
+    is-buffer "^1.1.0"
+    to-array-buffer "^1.0.0"
+
+pcm-util@^3.0.0:
+  version "3.0.0"
+  resolved "https://registry.yarnpkg.com/pcm-util/-/pcm-util-3.0.0.tgz#2f7dff4813a27481d995f7d2c18da17678fa303c"
+  dependencies:
+    audio-buffer "^4.0.1"
+    is-audio-buffer "^1.0.1"
+    is-buffer "^1.1.0"
+
+performance-now@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/performance-now/-/performance-now-2.1.0.tgz#6309f4e0e5fa913ec1c69307ae364b4b377c9e7b"
+
+pick-by-alias@^1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/pick-by-alias/-/pick-by-alias-1.2.0.tgz#5f7cb2b1f21a6e1e884a0c87855aa4a37361107b"
 
 process-nextick-args@~2.0.0:
   version "2.0.0"
@@ -948,6 +1153,10 @@ protobufjs@^6.8.6:
     "@types/node" "^8.9.4"
     long "^4.0.0"
 
+pull-stream@^3.4.4, pull-stream@^3.4.5:
+  version "3.6.8"
+  resolved "https://registry.yarnpkg.com/pull-stream/-/pull-stream-3.6.8.tgz#d63dee1c55ff2023fd380f724c387e931b752413"
+
 qs@^6.4.0:
   version "6.5.2"
   resolved "https://registry.yarnpkg.com/qs/-/qs-6.5.2.tgz#cb3ae806e8740444584ef154ce8ee98d403f3e36"
@@ -970,7 +1179,7 @@ rc@^1.1.7:
     minimist "^1.2.0"
     strip-json-comments "~2.0.1"
 
-readable-stream@^2.0.6:
+readable-stream@^2.0.5, readable-stream@^2.0.6:
   version "2.3.6"
   resolved "https://registry.yarnpkg.com/readable-stream/-/readable-stream-2.3.6.tgz#b11c27d88b8ff1fbe070643cf94b0c79ae1b0aaf"
   dependencies:
@@ -1005,6 +1214,10 @@ safe-buffer@^5.1.1, safe-buffer@^5.1.2, safe-buffer@~5.1.0, safe-buffer@~5.1.1:
 "safer-buffer@>= 2.1.2 < 3":
   version "2.1.2"
   resolved "https://registry.yarnpkg.com/safer-buffer/-/safer-buffer-2.1.2.tgz#44fa161b0187b9549dd84bb91802f9bd8385cd6a"
+
+sample-rate@^2.0.0:
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/sample-rate/-/sample-rate-2.0.1.tgz#3f508969262b2c729a95d4d42b795a5b33610bd0"
 
 sax@^1.2.4:
   version "1.2.4"
@@ -1082,6 +1295,15 @@ source-map@~0.5.1:
   version "0.5.7"
   resolved "https://registry.yarnpkg.com/source-map/-/source-map-0.5.7.tgz#8a039d2d1021d22d1ea14c80d8ea468ba2ef3fcc"
 
+speaker@^0.3.0:
+  version "0.3.1"
+  resolved "https://registry.yarnpkg.com/speaker/-/speaker-0.3.1.tgz#19965f87b54be291554826c2c9338e0afd5b7594"
+  dependencies:
+    bindings "^1.2.1"
+    debug "^2.2.0"
+    nan "^2.2.0"
+    readable-stream "^2.0.5"
+
 "statuses@>= 1.3.1 < 2", "statuses@>= 1.4.0 < 2", statuses@^1.2.0:
   version "1.5.0"
   resolved "https://registry.yarnpkg.com/statuses/-/statuses-1.5.0.tgz#161c7dac177659fd9811f43771fa99381478628c"
@@ -1140,6 +1362,14 @@ thenify-all@^1.0.0:
   dependencies:
     any-promise "^1.0.0"
 
+to-array-buffer@^1.0.0:
+  version "1.2.4"
+  resolved "https://registry.yarnpkg.com/to-array-buffer/-/to-array-buffer-1.2.4.tgz#7efdc3194a5a0d2b0ba93fba9d3edc33a1259473"
+  dependencies:
+    atob-lite "^1.0.0"
+    is-audio-buffer "^1.0.1"
+    is-data-uri "^0.1.0"
+
 to-array@0.1.4:
   version "0.1.4"
   resolved "https://registry.yarnpkg.com/to-array/-/to-array-0.1.4.tgz#17e6c11f73dd4f3d74cda7a4ff3238e9ad9bf890"
@@ -1150,6 +1380,10 @@ type-is@^1.5.5, type-is@^1.6.14:
   dependencies:
     media-typer "0.3.0"
     mime-types "~2.1.18"
+
+typedarray-methods@^1.0.0:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/typedarray-methods/-/typedarray-methods-1.0.1.tgz#ac8cabd143ece9e578e4efa4a80b89a7543aa226"
 
 uglify-js@^2.6:
   version "2.8.29"
@@ -1189,6 +1423,24 @@ util@^0.10.3:
 vary@^1.0.0:
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/vary/-/vary-1.1.2.tgz#2299f02c6ded30d4a5961b0b9f74524a18f634fc"
+
+wav-encoder@^1.3.0:
+  version "1.3.0"
+  resolved "https://registry.yarnpkg.com/wav-encoder/-/wav-encoder-1.3.0.tgz#ed1ca1e59c8d2bca50010d6a380ab8d473b12b65"
+
+web-audio-stream@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/web-audio-stream/-/web-audio-stream-3.0.1.tgz#b11d1b1cace161ea4a098c26f6744afcadc70b0e"
+  dependencies:
+    audio-buffer-list "^2.0.6"
+    audio-buffer-utils "^4.3.0"
+    audio-context "^1.0.0"
+    inherits "^2.0.1"
+    is-audio-buffer "^1.0.1"
+    is-plain-obj "^1.1.0"
+    object-assign "^4.1.1"
+    pcm-util "^2.1.0"
+    pull-stream "^3.4.4"
 
 wide-align@^1.1.0:
   version "1.1.2"
@@ -1235,7 +1487,7 @@ xmlhttprequest-ssl@~1.5.4:
   version "1.5.5"
   resolved "https://registry.yarnpkg.com/xmlhttprequest-ssl/-/xmlhttprequest-ssl-1.5.5.tgz#c2876b06168aadc40e57d97e81191ac8f4398b3e"
 
-xtend@^4.0.0:
+xtend@^4.0.0, xtend@^4.0.1:
   version "4.0.1"
   resolved "https://registry.yarnpkg.com/xtend/-/xtend-4.0.1.tgz#a5c6d532be656e23db820efb943a1f04998d63af"
 
