@@ -60,1358 +60,6 @@ module.exports = function(arraybuffer, start, end) {
 };
 
 },{}],3:[function(require,module,exports){
-module.exports = function _atob(str) {
-  return atob(str)
-}
-
-},{}],4:[function(require,module,exports){
-/**
- * AudioBuffer class
- *
- * @module audio-buffer/buffer
- *
- */
-'use strict'
-
-var isAudioBuffer = require('is-audio-buffer')
-var inherit = require('inherits')
-var util = require('audio-buffer-utils')
-var AudioBuffer = require('audio-buffer')
-var extend = require('object-assign')
-var nidx = require('negative-index')
-var isPlainObj = require('is-plain-obj')
-var Emitter = require('events')
-
-module.exports = AudioBufferList
-
-
-inherit(AudioBufferList, Emitter)
-
-
-function AudioBufferList(arg, options) {
-  if (!(this instanceof AudioBufferList)) return new AudioBufferList(arg, options)
-
-  if (typeof options === 'number') {
-    options = {channels: options}
-  }
-  if (options && options.channels != null) options.numberOfChannels = options.channels
-
-  extend(this, options)
-
-  this.buffers = []
-  this.length = 0
-  this.duration = 0
-
-  this.append(arg)
-}
-
-
-//AudioBuffer interface
-AudioBufferList.prototype.numberOfChannels = 2
-AudioBufferList.prototype.sampleRate = null
-
-//copy from channel into destination array
-AudioBufferList.prototype.copyFromChannel = function (destination, channel, startInChannel) {
-  if (startInChannel == null) startInChannel = 0
-  var offsets = this.offset(startInChannel)
-  var offset = startInChannel - offsets[1]
-  var initialOffset = offsets[1]
-  for (var i = offsets[0], l = this.buffers.length; i < l; i++) {
-    var buf = this.buffers[i]
-    var data = buf.getChannelData(channel)
-    if (startInChannel > offset) data = data.subarray(startInChannel)
-    if (channel < buf.numberOfChannels) {
-      destination.set(data, Math.max(0, offset - initialOffset))
-    }
-    offset += buf.length
-  }
-}
-
-//put data from array to channel
-AudioBufferList.prototype.copyToChannel = function (source, channel, startInChannel) {
-  if (startInChannel == null) startInChannel = 0
-  var offsets = this.offset(startInChannel)
-  var offset = startInChannel - offsets[1]
-  for (var i = offsets[0], l = this.buffers.length; i < l; i++) {
-    var buf = this.buffers[i]
-    var data = buf.getChannelData(channel)
-    if (channel < buf.numberOfChannels) {
-      data.set(source.subarray(Math.max(offset, startInChannel), offset + data.length), Math.max(0, startInChannel - offset));
-    }
-    offset += buf.length
-  }
-}
-
-//return float array with channel data
-AudioBufferList.prototype.getChannelData = function (channel, from, to) {
-  if (from == null) from = 0
-  if (to == null) to = this.length
-  from = nidx(from, this.length)
-  to = nidx(to, this.length)
-
-  if (!this.buffers.length || from === to) return new Float32Array()
-
-  //shortcut single buffer preserving subarraying
-  if (this.buffers.length === 1) {
-    return this.buffers[0].getChannelData(channel).subarray(from, to)
-  }
-
-  var floatArray = this.buffers[0].getChannelData(0).constructor
-  var data = new floatArray(to - from)
-  var fromOffset = this.offset(from)
-  var toOffset = this.offset(to)
-
-  var firstBuf = this.buffers[fromOffset[0]]
-  data.set(firstBuf.getChannelData(channel).subarray(fromOffset[1]))
-
-  var offset = -fromOffset[1] + firstBuf.length
-  for (var i = fromOffset[0] + 1, l = toOffset[0]; i < l; i++) {
-    var buf = this.buffers[i]
-    data.set(buf.getChannelData(channel), offset);
-    offset += buf.length
-  }
-  var lastBuf = this.buffers[toOffset[0]]
-  data.set(lastBuf.getChannelData(channel).subarray(0, toOffset[1]), offset)
-
-  return data
-}
-
-
-//patch BufferList methods
-AudioBufferList.prototype.append = function (buf) {
-	//FIXME: we may want to do resampling/channel mapping here or something
-	var i = 0
-
-  // unwrap argument into individual BufferLists
-  if (buf instanceof AudioBufferList) {
-    this.append(buf.buffers)
-  }
-  else if (isAudioBuffer(buf) && buf.length) {
-    this._appendBuffer(buf)
-  }
-  else if (Array.isArray(buf)) {
-    for (var l = buf.length; i < l; i++) {
-      this.append(buf[i])
-    }
-  }
-  //create AudioBuffer from (possibly num) arg
-  else if (buf) {
-		buf = new AudioBuffer(this.numberOfChannels || 2, buf)
-		this._appendBuffer(buf)
-	}
-
-	return this
-}
-
-
-AudioBufferList.prototype.offset = function _offset (offset) {
-  var tot = 0, i = 0, _t
-  if (offset === 0) return [ 0, 0 ]
-  for (; i < this.buffers.length; i++) {
-    _t = tot + this.buffers[i].length
-    if (offset < _t || i == this.buffers.length - 1)
-      return [ i, offset - tot ]
-    tot = _t
-  }
-}
-
-
-AudioBufferList.prototype._appendBuffer = function (buf) {
-  if (!buf) return this
-
-  //update channels count
-  if (!this.buffers.length) {
-    this.numberOfChannels = buf.numberOfChannels
-  }
-  else {
-    this.numberOfChannels = Math.max(this.numberOfChannels, buf.numberOfChannels)
-  }
-  this.duration += buf.duration
-
-  //init sampleRate
-  if (!this.sampleRate) this.sampleRate = buf.sampleRate
-
-  //push buffer
-  this.buffers.push(buf)
-  this.length += buf.length
-
-  return this
-}
-
-//copy data to destination audio buffer
-AudioBufferList.prototype.copy = function copy (dst, dstStart, srcStart, srcEnd) {
-	if (typeof srcStart != 'number' || srcStart < 0)
-		srcStart = 0
-	if (typeof srcEnd != 'number' || srcEnd > this.length)
-		srcEnd = this.length
-	if (srcStart >= this.length)
-		return dst || new AudioBuffer(this.numberOfChannels, 0)
-	if (srcEnd <= 0)
-		return dst || new AudioBuffer(this.numberOfChannels, 0)
-
-  var copy   = !!dst
-    , off    = this.offset(srcStart)
-    , len    = srcEnd - srcStart
-    , bytes  = len
-    , bufoff = (copy && dstStart) || 0
-    , start  = off[1]
-    , l
-    , i
-
-  // copy/slice everything
-  if (srcStart === 0 && srcEnd == this.length) {
-    if (!copy) { // slice, but full concat if multiple buffers
-      return this.buffers.length === 1
-        ? util.slice(this.buffers[0])
-        : util.concat(this.buffers)
-    }
-    // copy, need to copy individual buffers
-    for (i = 0; i < this.buffers.length; i++) {
-      util.copy(this.buffers[i], dst, bufoff)
-      bufoff += this.buffers[i].length
-    }
-
-    return dst
-  }
-
-  // easy, cheap case where it's a subset of one of the buffers
-  if (bytes <= this.buffers[off[0]].length - start) {
-    return copy
-      ? util.copy(util.subbuffer(this.buffers[off[0]], start, start + bytes), dst, dstStart)
-      : util.slice(this.buffers[off[0]], start, start + bytes)
-  }
-
-  if (!copy) // a slice, we need something to copy in to
-    dst = new AudioBuffer(this.numberOfChannels, len)
-
-  for (i = off[0]; i < this.buffers.length; i++) {
-    l = this.buffers[i].length - start
-
-    if (bytes > l) {
-      util.copy(util.subbuffer(this.buffers[i], start), dst, bufoff)
-    } else {
-      util.copy(util.subbuffer(this.buffers[i], start, start + bytes), dst, bufoff)
-      break
-    }
-
-    bufoff += l
-    bytes -= l
-
-    if (start)
-      start = 0
-  }
-
-  return dst
-}
-
-//do superficial handle
-AudioBufferList.prototype.slice = function slice (start, end) {
-  start = start || 0
-  end = end == null ? this.length : end
-
-  start = nidx(start, this.length)
-  end = nidx(end, this.length)
-
-  if (start == end) {
-    return new AudioBufferList(0, this.numberOfChannels)
-  }
-
-  var startOffset = this.offset(start)
-    , endOffset = this.offset(end)
-    , buffers = this.buffers.slice(startOffset[0], endOffset[0] + 1)
-
-  if (endOffset[1] == 0) {
-    buffers.pop()
-  }
-  else {
-    buffers[buffers.length-1] = util.subbuffer(buffers[buffers.length-1], 0, endOffset[1])
-  }
-
-  if (startOffset[1] != 0) {
-    buffers[0] = util.subbuffer(buffers[0], startOffset[1])
-  }
-
-  return new AudioBufferList(buffers, this.numberOfChannels)
-}
-
-//clone with preserving data
-AudioBufferList.prototype.clone = function clone (start, end) {
-  var i = 0, copy = new AudioBufferList(0, this.numberOfChannels), sublist = this.slice(start, end)
-
-  for (; i < sublist.buffers.length; i++)
-    copy.append(util.clone(sublist.buffers[i]))
-
-  return copy
-}
-
-//clean up
-AudioBufferList.prototype.destroy = function destroy () {
-  this.buffers.length = 0
-  this.length = 0
-}
-
-
-//repeat contents N times
-AudioBufferList.prototype.repeat = function (times) {
-  times = Math.floor(times)
-  if (!times && times !== 0 || !Number.isFinite(times)) throw RangeError('Repeat count must be non-negative number.')
-
-  if (!times) {
-    this.consume(this.length)
-    return this
-  }
-
-  if (times === 1) return this
-
-  var data = this
-
-  for (var i = 1; i < times; i++) {
-    data = new AudioBufferList(data.copy())
-    this.append(data)
-  }
-
-  return this
-}
-
-//insert new buffer/buffers at the offset
-AudioBufferList.prototype.insert = function (offset, source) {
-  if (source == null) {
-    source = offset
-    offset = 0
-  }
-
-  offset = nidx(offset, this.length)
-
-  this.split(offset)
-
-  var offset = this.offset(offset)
-
-  //convert any type of source to audio buffer list
-  source = new AudioBufferList(source)
-  this.buffers.splice.apply(this.buffers, [offset[0], 0].concat(source.buffers))
-
-  //update params
-  this.length += source.length
-  this.duration += source.duration
-  this.numberOfChannels = Math.max(source.numberOfChannels, this.numberOfChannels)
-
-  return this
-}
-
-//delete N samples from any position
-AudioBufferList.prototype.remove = function (offset, count) {
-  if (count == null) {
-    count = offset
-    offset = 0
-  }
-  if (!count) return this
-
-  if (count < 0) {
-    count = -count
-    offset -= count
-  }
-
-  offset = nidx(offset, this.length)
-  count = Math.min(this.length - offset, count)
-
-  this.split(offset, offset + count)
-
-  var offsetLeft = this.offset(offset)
-  var offsetRight = this.offset(offset + count)
-
-  if (offsetRight[1] === this.buffers[offsetRight[0]].length) {
-    offsetRight[0] += 1
-  }
-
-  let deleted = this.buffers.splice(offsetLeft[0], offsetRight[0] - offsetLeft[0])
-  deleted = new AudioBufferList(deleted, this.numberOfChannels)
-
-  this.length -= deleted.length
-  this.duration = this.length / this.sampleRate
-
-  return deleted
-}
-
-//delete samples from the list, return self
-AudioBufferList.prototype.delete = function () {
-  this.remove.apply(this, arguments)
-  return this
-}
-
-//remove N sampled from the beginning
-AudioBufferList.prototype.consume = function consume (size) {
-  while (this.buffers.length) {
-    if (size >= this.buffers[0].length) {
-      size -= this.buffers[0].length
-      this.length -= this.buffers[0].length
-      this.buffers.shift()
-    } else {
-      //util.subbuffer would remain buffer in memory though it is faster
-      this.buffers[0] = util.subbuffer(this.buffers[0], size)
-      this.length -= size
-      break
-    }
-  }
-  this.duration = this.length / this.sampleRate
-  return this
-}
-
-
-//return new list via applying fn to each buffer from the indicated range
-AudioBufferList.prototype.map = function map (fn, from, to) {
-  if (from == null) from = 0
-  if (to == null) to = this.length
-  from = nidx(from, this.length)
-  to = nidx(to, this.length)
-
-  let fromOffset = this.offset(from)
-  let toOffset = this.offset(to)
-
-  let offset = from - fromOffset[1]
-  let before = this.buffers.slice(0, fromOffset[0])
-  let after = this.buffers.slice(toOffset[0] + 1)
-  let middle = this.buffers.slice(fromOffset[0], toOffset[0] + 1)
-
-  middle = middle.map((buf, idx) => {
-    let result = fn.call(this, buf, idx, offset, this.buffers, this)
-    if (result === undefined || result === true) result = buf
-    //ignore removed buffers
-    if (!result) {
-      return null;
-    }
-
-    //track offset
-    offset += result.length
-
-    return result
-  })
-  .filter((buf) => {
-    return buf ? !!buf.length : false
-  })
-
-  return new AudioBufferList(before.concat(middle).concat(after), this.numberOfChannels)
-}
-
-//apply fn to every buffer for the indicated range
-AudioBufferList.prototype.each = function each (fn, from, to, reversed) {
-  let options = arguments[arguments.length - 1]
-  if (!isPlainObj(options)) options = {reversed: false}
-
-  if (typeof from != 'number') from = 0
-  if (typeof to != 'number') to = this.length
-  from = nidx(from, this.length)
-  to = nidx(to, this.length)
-
-  let fromOffset = this.offset(from)
-  let toOffset = this.offset(to)
-
-  let middle = this.buffers.slice(fromOffset[0], toOffset[0] + 1)
-
-  if (options.reversed) {
-    let offset = to - toOffset[1]
-    for (let i = toOffset[0], l = fromOffset[0]; i >= l; i--) {
-      let buf = this.buffers[i]
-      let res = fn.call(this, buf, i, offset, this.buffers, this)
-      if (res === false) break
-      offset -= buf.length
-    }
-  }
-  else {
-    let offset = from - fromOffset[1]
-    for (let i = fromOffset[0], l = toOffset[0]+1; i < l; i++) {
-      let buf = this.buffers[i]
-      let res = fn.call(this, buf, i, offset, this.buffers, this)
-      if (res === false) break
-      offset += buf.length
-    }
-  }
-
-  return this;
-}
-
-//reverse subpart
-AudioBufferList.prototype.reverse = function reverse (from, to) {
-  if (from == null) from = 0
-  if (to == null) to = this.length
-
-  from = nidx(from, this.length)
-  to = nidx(to, this.length)
-
-  let sublist = this.slice(from, to)
-  .each((buf) => {
-    util.reverse(buf)
-  })
-  sublist.buffers.reverse()
-
-  this.remove(from, to-from)
-
-  this.insert(from, sublist)
-
-  return this
-}
-
-//split at the indicated indexes
-AudioBufferList.prototype.split = function split () {
-  let args = arguments;
-
-  for (let i = 0; i < args.length; i++ ) {
-    let arg = args[i]
-    if (Array.isArray(arg)) {
-      this.split.apply(this, arg)
-    }
-    else if (typeof arg === 'number') {
-      let offset = this.offset(arg)
-      let buf = this.buffers[offset[0]]
-
-      if (offset[1] > 0 && offset[1] < buf.length) {
-        let left = util.subbuffer(buf, 0, offset[1])
-        let right = util.subbuffer(buf, offset[1])
-
-        this.buffers.splice(offset[0], 1, left, right)
-      }
-    }
-  }
-
-  return this
-}
-
-
-//join buffers within the subrange
-AudioBufferList.prototype.join = function join (from, to) {
-  if (from == null) from = 0
-  if (to == null) to = this.length
-
-  from = nidx(from, this.length)
-  to = nidx(to, this.length)
-
-  let fromOffset = this.offset(from)
-  let toOffset = this.offset(to)
-
-  let bufs = this.buffers.slice(fromOffset[0], toOffset[0])
-  let buf = util.concat(bufs)
-
-  this.buffers.splice.apply(this.buffers, [fromOffset[0], toOffset[0] - fromOffset[0] + (toOffset[1] ? 1 : 0)].concat(buf))
-
-  return this
-}
-
-},{"audio-buffer":6,"audio-buffer-utils":5,"events":91,"inherits":45,"is-audio-buffer":46,"is-plain-obj":51,"negative-index":58,"object-assign":59}],5:[function(require,module,exports){
-/**
- * @module  audio-buffer-utils
- */
-
-'use strict'
-
-require('typedarray-methods')
-var AudioBuffer = require('audio-buffer')
-var isAudioBuffer = require('is-audio-buffer')
-var isBrowser = require('is-browser')
-var nidx = require('negative-index')
-var clamp = require('clamp')
-var context = require('audio-context')
-
-module.exports = {
-	create: create,
-	copy: copy,
-	shallow: shallow,
-	clone: clone,
-	reverse: reverse,
-	invert: invert,
-	zero: zero,
-	noise: noise,
-	equal: equal,
-	fill: fill,
-	slice: slice,
-	concat: concat,
-	resize: resize,
-	pad: pad,
-	padLeft: padLeft,
-	padRight: padRight,
-	rotate: rotate,
-	shift: shift,
-	normalize: normalize,
-	removeStatic: removeStatic,
-	trim: trim,
-	trimLeft: trimLeft,
-	trimRight: trimRight,
-	mix: mix,
-	size: size,
-	data: data,
-	subbuffer: subbuffer
-}
-
-
-/**
- * Create buffer from any argument
- */
-function create (len, channels, rate, options) {
-	if (!options) options = {}
-	return new AudioBuffer(channels, len, rate, options);
-}
-
-
-/**
- * Copy data from buffer A to buffer B
- */
-function copy (from, to, offset) {
-	validate(from);
-	validate(to);
-
-	offset = offset || 0;
-
-	for (var channel = 0, l = Math.min(from.numberOfChannels, to.numberOfChannels); channel < l; channel++) {
-		to.getChannelData(channel).set(from.getChannelData(channel), offset);
-	}
-
-	return to;
-}
-
-
-/**
- * Assert argument is AudioBuffer, throw error otherwise.
- */
-function validate (buffer) {
-	if (!isAudioBuffer(buffer)) throw new Error('Argument should be an AudioBuffer instance.');
-}
-
-
-
-/**
- * Create a buffer with the same characteristics as inBuffer, without copying
- * the data. Contents of resulting buffer are undefined.
- */
-function shallow (buffer) {
-	validate(buffer);
-
-	//workaround for faster browser creation
-	//avoid extra checks & copying inside of AudioBuffer class
-	if (isBrowser) {
-		return context().createBuffer(buffer.numberOfChannels, buffer.length, buffer.sampleRate);
-	}
-
-	return create(buffer.length, buffer.numberOfChannels, buffer.sampleRate);
-}
-
-
-/**
- * Create clone of a buffer
- */
-function clone (buffer) {
-	return copy(buffer, shallow(buffer));
-}
-
-
-/**
- * Reverse samples in each channel
- */
-function reverse (buffer, target, start, end) {
-	validate(buffer);
-
-	//if target buffer is passed
-	if (!isAudioBuffer(target) && target != null) {
-		end = start;
-		start = target;
-		target = null;
-	}
-
-	if (target) {
-		validate(target);
-		copy(buffer, target);
-	}
-	else {
-		target = buffer;
-	}
-
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-
-	for (var i = 0, c = target.numberOfChannels; i < c; ++i) {
-		target.getChannelData(i).subarray(start, end).reverse();
-	}
-
-	return target;
-}
-
-
-/**
- * Invert amplitude of samples in each channel
- */
-function invert (buffer, target, start, end) {
-	//if target buffer is passed
-	if (!isAudioBuffer(target) && target != null) {
-		end = start;
-		start = target;
-		target = null;
-	}
-
-	return fill(buffer, target, function (sample) { return -sample; }, start, end);
-}
-
-
-/**
- * Fill with zeros
- */
-function zero (buffer, target, start, end) {
-	return fill(buffer, target, 0, start, end);
-}
-
-
-/**
- * Fill with white noise
- */
-function noise (buffer, target, start, end) {
-	return fill(buffer, target, function (sample) { return Math.random() * 2 - 1; }, start, end);
-}
-
-
-/**
- * Test whether two buffers are the same
- */
-function equal (bufferA, bufferB) {
-	//walk by all the arguments
-	if (arguments.length > 2) {
-		for (var i = 0, l = arguments.length - 1; i < l; i++) {
-			if (!equal(arguments[i], arguments[i + 1])) return false;
-		}
-		return true;
-	}
-
-	validate(bufferA);
-	validate(bufferB);
-
-	if (bufferA.length !== bufferB.length || bufferA.numberOfChannels !== bufferB.numberOfChannels) return false;
-
-	for (var channel = 0; channel < bufferA.numberOfChannels; channel++) {
-		var dataA = bufferA.getChannelData(channel);
-		var dataB = bufferB.getChannelData(channel);
-
-		for (var i = 0; i < dataA.length; i++) {
-			if (dataA[i] !== dataB[i]) return false;
-		}
-	}
-
-	return true;
-}
-
-
-
-/**
- * Generic in-place fill/transform
- */
-function fill (buffer, target, value, start, end) {
-	validate(buffer);
-
-	//if target buffer is passed
-	if (!isAudioBuffer(target) && target != null) {
-		//target is bad argument
-		if (typeof value == 'function') {
-			target = null;
-		}
-		else {
-			end = start;
-			start = value;
-			value = target;
-			target = null;
-		}
-	}
-
-	if (target) {
-		validate(target);
-	}
-	else {
-		target = buffer;
-	}
-
-	//resolve optional start/end args
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-	//resolve type of value
-	if (!(value instanceof Function)) {
-		for (var channel = 0, c = buffer.numberOfChannels; channel < c; channel++) {
-			var targetData = target.getChannelData(channel);
-			for (var i = start; i < end; i++) {
-				targetData[i] = value
-			}
-		}
-	}
-	else {
-		for (var channel = 0, c = buffer.numberOfChannels; channel < c; channel++) {
-			var data = buffer.getChannelData(channel),
-				targetData = target.getChannelData(channel);
-			for (var i = start; i < end; i++) {
-				targetData[i] = value.call(buffer, data[i], i, channel, data);
-			}
-		}
-	}
-
-	return target;
-}
-
-
-/**
- * Return sliced buffer
- */
-function slice (buffer, start, end) {
-	validate(buffer);
-
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-
-	var data = [];
-	for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-		var channelData = buffer.getChannelData(channel)
-		data.push(channelData.slice(start, end));
-	}
-	return create(data, buffer.numberOfChannels, buffer.sampleRate);
-}
-
-/**
- * Create handle for a buffer from subarrays
- */
-function subbuffer (buffer, start, end) {
-	validate(buffer);
-
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-
-	var data = [];
-	for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-		var channelData = buffer.getChannelData(channel)
-		data.push(channelData.subarray(start, end));
-	}
-	return create(data, buffer.numberOfChannels, buffer.sampleRate, {isWAA: false});
-}
-
-/**
- * Concat buffer with other buffer(s)
- */
-function concat () {
-	var list = []
-
-	for (var i = 0, l = arguments.length; i < l; i++) {
-		var arg = arguments[i]
-		if (Array.isArray(arg)) {
-			for (var j = 0; j < arg.length; j++) {
-				list.push(arg[j])
-			}
-		}
-		else {
-			list.push(arg)
-		}
-	}
-
-	var channels = 1;
-	var length = 0;
-	//FIXME: there might be required more thoughtful resampling, but now I'm lazy sry :(
-	var sampleRate = 0;
-
-	for (var i = 0; i < list.length; i++) {
-		var buf = list[i]
-		validate(buf)
-		length += buf.length
-		channels = Math.max(buf.numberOfChannels, channels)
-		sampleRate = Math.max(buf.sampleRate, sampleRate)
-	}
-
-	var data = [];
-	for (var channel = 0; channel < channels; channel++) {
-		var channelData = new Float32Array(length), offset = 0
-
-		for (var i = 0; i < list.length; i++) {
-			var buf = list[i]
-			if (channel < buf.numberOfChannels) {
-				channelData.set(buf.getChannelData(channel), offset);
-			}
-			offset += buf.length
-		}
-
-		data.push(channelData);
-	}
-
-	return create(data, channels, sampleRate);
-}
-
-
-/**
- * Change the length of the buffer, by trimming or filling with zeros
- */
-function resize (buffer, length) {
-	validate(buffer);
-
-	if (length < buffer.length) return slice(buffer, 0, length);
-
-	return concat(buffer, create(length - buffer.length, buffer.numberOfChannels));
-}
-
-
-/**
- * Pad buffer to required size
- */
-function pad (a, b, value) {
-	var buffer, length;
-
-	if (typeof a === 'number') {
-		buffer = b;
-		length = a;
-	} else {
-		buffer = a;
-		length = b;
-	}
-
-	value = value || 0;
-
-	validate(buffer);
-
-	//no need to pad
-	if (length < buffer.length) return buffer;
-
-	//left-pad
-	if (buffer === b) {
-		return concat(fill(create(length - buffer.length, buffer.numberOfChannels), value), buffer);
-	}
-
-	//right-pad
-	return concat(buffer, fill(create(length - buffer.length, buffer.numberOfChannels), value));
-}
-function padLeft (data, len, value) {
-	return pad(len, data, value)
-}
-function padRight (data, len, value) {
-	return pad(data, len, value)
-}
-
-
-
-/**
- * Shift content of the buffer in circular fashion
- */
-function rotate (buffer, offset) {
-	validate(buffer);
-
-	for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-		var cData = buffer.getChannelData(channel);
-		var srcData = cData.slice();
-		for (var i = 0, l = cData.length, idx; i < l; i++) {
-			idx = (offset + (offset + i < 0 ? l + i : i )) % l;
-			cData[idx] = srcData[i];
-		}
-	}
-
-	return buffer;
-}
-
-
-/**
- * Shift content of the buffer
- */
-function shift (buffer, offset) {
-	validate(buffer);
-
-	for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-		var cData = buffer.getChannelData(channel);
-		if (offset > 0) {
-			for (var i = cData.length - offset; i--;) {
-				cData[i + offset] = cData[i];
-			}
-		}
-		else {
-			for (var i = -offset, l = cData.length - offset; i < l; i++) {
-				cData[i + offset] = cData[i] || 0;
-			}
-		}
-	}
-
-	return buffer;
-}
-
-
-/**
- * Normalize buffer by the maximum value,
- * limit values by the -1..1 range
- */
-function normalize (buffer, target, start, end) {
-	//resolve optional target arg
-	if (!isAudioBuffer(target)) {
-		end = start;
-		start = target;
-		target = null;
-	}
-
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-
-	//for every channel bring it to max-min amplitude range
-	var max = 0
-
-	for (var c = 0; c < buffer.numberOfChannels; c++) {
-		var data = buffer.getChannelData(c)
-		for (var i = start; i < end; i++) {
-			max = Math.max(Math.abs(data[i]), max)
-		}
-	}
-
-	var amp = Math.max(1 / max, 1)
-
-	return fill(buffer, target, function (value, i, ch) {
-		return clamp(value * amp, -1, 1)
-	}, start, end);
-}
-
-/**
- * remove DC offset
- */
-function removeStatic (buffer, target, start, end) {
-	var means = mean(buffer, start, end)
-
-	return fill(buffer, target, function (value, i, ch) {
-		return value - means[ch];
-	}, start, end);
-}
-
-/**
- * Get average level per-channel
- */
-function mean (buffer, start, end) {
-	validate(buffer)
-
-	start = start == null ? 0 : nidx(start, buffer.length);
-	end = end == null ? buffer.length : nidx(end, buffer.length);
-
-	if (end - start < 1) return []
-
-	var result = []
-
-	for (var c = 0; c < buffer.numberOfChannels; c++) {
-		var sum = 0
-		var data = buffer.getChannelData(c)
-		for (var i = start; i < end; i++) {
-			sum += data[i]
-		}
-		result.push(sum / (end - start))
-	}
-
-	return result
-}
-
-
-/**
- * Trim sound (remove zeros from the beginning and the end)
- */
-function trim (buffer, level) {
-	return trimInternal(buffer, level, true, true);
-}
-
-function trimLeft (buffer, level) {
-	return trimInternal(buffer, level, true, false);
-}
-
-function trimRight (buffer, level) {
-	return trimInternal(buffer, level, false, true);
-}
-
-function trimInternal(buffer, level, trimLeft, trimRight) {
-	validate(buffer);
-
-	level = (level == null) ? 0 : Math.abs(level);
-
-	var start, end;
-
-	if (trimLeft) {
-		start = buffer.length;
-		//FIXME: replace with indexOF
-		for (var channel = 0, c = buffer.numberOfChannels; channel < c; channel++) {
-			var data = buffer.getChannelData(channel);
-			for (var i = 0; i < data.length; i++) {
-				if (i > start) break;
-				if (Math.abs(data[i]) > level) {
-					start = i;
-					break;
-				}
-			}
-		}
-	} else {
-		start = 0;
-	}
-
-	if (trimRight) {
-		end = 0;
-		//FIXME: replace with lastIndexOf
-		for (var channel = 0, c = buffer.numberOfChannels; channel < c; channel++) {
-			var data = buffer.getChannelData(channel);
-			for (var i = data.length - 1; i >= 0; i--) {
-				if (i < end) break;
-				if (Math.abs(data[i]) > level) {
-					end = i + 1;
-					break;
-				}
-			}
-		}
-	} else {
-		end = buffer.length;
-	}
-
-	return slice(buffer, start, end);
-}
-
-
-/**
- * Mix current buffer with the other one.
- * The reason to modify bufferA instead of returning the new buffer
- * is reduced amount of calculations and flexibility.
- * If required, the cloning can be done before mixing, which will be the same.
- */
-function mix (bufferA, bufferB, ratio, offset) {
-	validate(bufferA);
-	validate(bufferB);
-
-	if (ratio == null) ratio = 0.5;
-	var fn = ratio instanceof Function ? ratio : function (a, b) {
-		return a * (1 - ratio) + b * ratio;
-	};
-
-	if (offset == null) offset = 0;
-	else if (offset < 0) offset += bufferA.length;
-
-	for (var channel = 0; channel < bufferA.numberOfChannels; channel++) {
-		var aData = bufferA.getChannelData(channel);
-		var bData = bufferB.getChannelData(channel);
-
-		for (var i = offset, j = 0; i < bufferA.length && j < bufferB.length; i++, j++) {
-			aData[i] = fn.call(bufferA, aData[i], bData[j], j, channel);
-		}
-	}
-
-	return bufferA;
-}
-
-
-/**
- * Size of a buffer, in bytes
- */
-function size (buffer) {
-	validate(buffer);
-
-	return buffer.numberOfChannels * buffer.getChannelData(0).byteLength;
-}
-
-
-/**
- * Return array with buffer’s per-channel data
- */
-function data (buffer, data) {
-	validate(buffer);
-
-	//ensure output data array, if not defined
-	data = data || [];
-
-	//transfer data per-channel
-	for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-		if (ArrayBuffer.isView(data[channel])) {
-			data[channel].set(buffer.getChannelData(channel));
-		}
-		else {
-			data[channel] = buffer.getChannelData(channel);
-		}
-	}
-
-	return data;
-}
-
-},{"audio-buffer":6,"audio-context":7,"clamp":21,"is-audio-buffer":46,"is-browser":47,"negative-index":58,"typedarray-methods":75}],6:[function(require,module,exports){
-/**
- * AudioBuffer class
- *
- * @module audio-buffer/buffer
- */
-'use strict'
-
-var isBuffer = require('is-buffer')
-var b2ab = require('buffer-to-arraybuffer')
-var isBrowser = require('is-browser')
-var isAudioBuffer = require('is-audio-buffer')
-var context = require('audio-context')
-var isPlainObj = require('is-plain-obj')
-
-
-module.exports = AudioBuffer
-
-
-/**
- * @constructor
- *
- * @param {∀} data Any collection-like object
- */
-function AudioBuffer (channels, data, sampleRate, options) {
-	//enforce class
-	if (!(this instanceof AudioBuffer)) return new AudioBuffer(channels, data, sampleRate, options);
-
-	//detect last argument
-	var c = arguments.length
-	while (!arguments[c] && c) c--;
-	var lastArg = arguments[c];
-
-	//figure out options
-	var ctx, isWAA, floatArray, isForcedType = false
-	if (lastArg && typeof lastArg != 'number') {
-		ctx = lastArg.context || (context && context())
-		isWAA = lastArg.isWAA != null ? lastArg.isWAA : !!(isBrowser && ctx.createBuffer)
-		floatArray = lastArg.floatArray || Float32Array
-		if (lastArg.floatArray) isForcedType = true
-	}
-	else {
-		ctx = context && context()
-		isWAA = !!ctx
-		floatArray = Float32Array
-	}
-
-	//if one argument only - it is surely data or length
-	//having new AudioBuffer(2) does not make sense as 2 being number of channels
-	if (data == null || isPlainObj(data)) {
-		data = channels || 1;
-		channels = null;
-	}
-	//audioCtx.createBuffer() - complacent arguments
-	else {
-		if (typeof sampleRate == 'number') this.sampleRate = sampleRate;
-		else if (isBrowser) this.sampleRate = ctx.sampleRate;
-		if (channels != null) this.numberOfChannels = channels;
-	}
-
-	//if AudioBuffer(channels?, number, rate?) = create new array
-	//this is the default WAA-compatible case
-	if (typeof data === 'number') {
-		this.length = data;
-		this.data = []
-		for (var c = 0; c < this.numberOfChannels; c++) {
-			this.data[c] = new floatArray(data)
-		}
-	}
-	//if other audio buffer passed - create fast clone of it
-	//if WAA AudioBuffer - get buffer’s data (it is bounded)
-	else if (isAudioBuffer(data)) {
-		this.length = data.length;
-		if (channels == null) this.numberOfChannels = data.numberOfChannels;
-		if (sampleRate == null) this.sampleRate = data.sampleRate;
-
-		this.data = []
-
-		//copy channel's data
-		for (var c = 0, l = this.numberOfChannels; c < l; c++) {
-			this.data[c] = data.getChannelData(c).slice()
-		}
-	}
-	//TypedArray, Buffer, DataView etc, or ArrayBuffer
-	//NOTE: node 4.x+ detects Buffer as ArrayBuffer view
-	else if (ArrayBuffer.isView(data) || data instanceof ArrayBuffer || isBuffer(data)) {
-		if (isBuffer(data)) {
-			data = b2ab(data);
-		}
-		//convert non-float array to floatArray
-		if (!(data instanceof Float32Array) && !(data instanceof Float64Array)) {
-			data = new floatArray(data.buffer || data);
-		}
-
-		this.length = Math.floor(data.length / this.numberOfChannels);
-		this.data = []
-		for (var c = 0; c < this.numberOfChannels; c++) {
-			this.data[c] = data.subarray(c * this.length, (c + 1) * this.length);
-		}
-	}
-	//if array - parse channeled data
-	else if (Array.isArray(data)) {
-		//if separated data passed already - send sub-arrays to channels
-		if (data[0] instanceof Object) {
-			if (channels == null) this.numberOfChannels = data.length;
-			this.length = data[0].length;
-			this.data = []
-			for (var c = 0; c < this.numberOfChannels; c++ ) {
-				this.data[c] = (!isForcedType && ((data[c] instanceof Float32Array) || (data[c] instanceof Float64Array))) ? data[c] : new floatArray(data[c])
-			}
-		}
-		//plain array passed - split array equipartially
-		else {
-			this.length = Math.floor(data.length / this.numberOfChannels);
-			this.data = []
-			for (var c = 0; c < this.numberOfChannels; c++) {
-				this.data[c] = new floatArray(data.slice(c * this.length, (c + 1) * this.length))
-			}
-		}
-	}
-	//if ndarray, typedarray or other data-holder passed - redirect plain databuffer
-	else if (data && (data.data || data.buffer)) {
-		return new AudioBuffer(this.numberOfChannels, data.data || data.buffer, this.sampleRate);
-	}
-	//if other - unable to parse arguments
-	else {
-		throw Error('Failed to create buffer: check provided arguments');
-	}
-
-
-	//for browser - return WAA buffer, no sub-buffering allowed
-	if (isWAA) {
-		//create WAA buffer
-		var audioBuffer = ctx.createBuffer(this.numberOfChannels, this.length, this.sampleRate);
-
-		//fill channels
-		for (var c = 0; c < this.numberOfChannels; c++) {
-			audioBuffer.getChannelData(c).set(this.getChannelData(c));
-		}
-
-		return audioBuffer;
-	}
-
-	this.duration = this.length / this.sampleRate;
-}
-
-
-/**
- * Default params
- */
-AudioBuffer.prototype.numberOfChannels = 2;
-AudioBuffer.prototype.sampleRate = context.sampleRate || 44100;
-
-
-/**
- * Return data associated with the channel.
- *
- * @return {Array} Array containing the data
- */
-AudioBuffer.prototype.getChannelData = function (channel) {
-	//FIXME: ponder on this, whether we really need that rigorous check, it may affect performance
-	if (channel >= this.numberOfChannels || channel < 0 || channel == null) throw Error('Cannot getChannelData: channel number (' + channel + ') exceeds number of channels (' + this.numberOfChannels + ')');
-
-	return this.data[channel]
-};
-
-
-/**
- * Place data to the destination buffer, starting from the position
- */
-AudioBuffer.prototype.copyFromChannel = function (destination, channelNumber, startInChannel) {
-	if (startInChannel == null) startInChannel = 0;
-	var data = this.data[channelNumber]
-	for (var i = startInChannel, j = 0; i < this.length && j < destination.length; i++, j++) {
-		destination[j] = data[i];
-	}
-}
-
-
-/**
- * Place data from the source to the channel, starting (in self) from the position
- * Clone of WAAudioBuffer
- */
-AudioBuffer.prototype.copyToChannel = function (source, channelNumber, startInChannel) {
-	var data = this.data[channelNumber]
-
-	if (!startInChannel) startInChannel = 0;
-
-	for (var i = startInChannel, j = 0; i < this.length && j < source.length; i++, j++) {
-		data[i] = source[j];
-	}
-};
-
-
-},{"audio-context":7,"buffer-to-arraybuffer":20,"is-audio-buffer":46,"is-browser":47,"is-buffer":48,"is-plain-obj":51}],7:[function(require,module,exports){
 'use strict'
 
 var cache = {}
@@ -1457,1042 +105,7 @@ module.exports = function getContext (options) {
 	return ctx
 }
 
-},{}],8:[function(require,module,exports){
-/**
- * @module  audio-generator
- */
-'use strict';
-
-var extend = require('xtend/mutable');
-var util = require('audio-buffer-utils');
-var pcm = require('pcm-util');
-
-
-module.exports = Generator;
-
-
-/**
- * Sync map constructor
- * @constructor
- */
-function Generator (fn, opts) {
-	if (fn instanceof Function) {
-		if (typeof opts === 'number') {
-			opts = {duration: opts};
-		}
-		else {
-			opts = opts || {};
-		}
-		opts.generate = fn;
-	}
-	else {
-		opts = fn || {};
-	}
-
-	//sort out arguments
-	opts = extend({
-		//total duration of a stream
-		duration: Infinity,
-
-		//time repeat period, in seconds, or 1/frequency
-		period: Infinity,
-
-		//inferred from period
-		//frequency: 0,
-
-		/**
-		 * Generate sample value for a time.
-		 * Returns [L, R, ...] or a number for each channel
-		 *
-		 * @param {number} time current time
-		 */
-		generate: Math.random
-	}, pcm.defaults, opts);
-
-	//align frequency/period
-	if (opts.frequency != null) {
-		opts.period = 1 / opts.frequency;
-	} else {
-		opts.frequency = 1 / opts.period;
-	}
-
-	let time = 0, count = 0;
-
-	return generate;
-
-	//return sync source/map
-	function generate (buffer) {
-		if (!buffer) buffer = util.create(opts.samplesPerFrame, opts.channels, opts.sampleRate);
-
-		//get audio buffer channels data in array
-		var data = util.data(buffer);
-
-		//enough?
-		if (time + buffer.length / opts.sampleRate > opts.duration) return null;
-
-		//generate [channeled] samples
-		for (var i = 0; i < buffer.length; i++) {
-			var moment = time + i / opts.sampleRate;
-
-			//rotate by period
-			if (opts.period !== Infinity) {
-				moment %= opts.period;
-			}
-
-			var gen = opts.generate(moment);
-
-			//treat null as end
-			if (gen === null) {
-				return gen;
-			}
-
-			//wrap number value
-			if (!Array.isArray(gen)) {
-				gen = [gen || 0];
-			}
-
-			//distribute generated data by channels
-			for (var channel = 0; channel < buffer.numberOfChannels; channel++) {
-				data[channel][i] = (gen[channel] == null ? gen[0] : gen[channel]);
-			}
-		}
-
-		//update counters
-		count += buffer.length;
-		time = count / opts.sampleRate;
-
-		return buffer;
-	}
-}
-
-
-
-},{"audio-buffer-utils":5,"pcm-util":10,"xtend/mutable":82}],9:[function(require,module,exports){
-/**
- * @module  audio-generator
- */
-'use strict';
-module.exports = require('./direct')
-
-},{"./direct":8}],10:[function(require,module,exports){
-(function (Buffer){
-/**
- * @module  pcm-util
- */
-'use strict'
-
-var toArrayBuffer = require('to-array-buffer')
-var AudioBuffer = require('audio-buffer')
-var os = require('os')
-var isAudioBuffer = require('is-audio-buffer')
-
-
-
-/**
- * Default pcm format values
- */
-var defaultFormat = {
-	signed: true,
-	float: false,
-	bitDepth: 16,
-	byteOrder: os.endianness instanceof Function ? os.endianness() : 'LE',
-	channels: 2,
-	sampleRate: 44100,
-	interleaved: true,
-	samplesPerFrame: 1024,
-	id: 'S_16_LE_2_44100_I',
-	max: 32678,
-	min: -32768
-}
-
-
-/**
- * Just a list of reserved property names of format
- */
-var formatProperties = Object.keys(defaultFormat)
-
-
-/** Correct default format values */
-normalize(defaultFormat)
-
-
-/**
- * Get format info from any object, unnormalized.
- */
-function getFormat (obj) {
-	//undefined format - no format-related props, for sure
-	if (!obj) return {}
-
-	//if is string - parse format
-	if (typeof obj === 'string' || obj.id) {
-		return parse(obj.id || obj)
-	}
-
-	//if audio buffer - we know it’s format
-	else if (isAudioBuffer(obj)) {
-		var arrayFormat = fromTypedArray(obj.getChannelData(0))
-		return {
-			sampleRate: obj.sampleRate,
-			channels: obj.numberOfChannels,
-			samplesPerFrame: obj.length,
-			float: true,
-			signed: true,
-			bitDepth: arrayFormat.bitDepth
-		}
-	}
-
-	//if is array - detect format
-	else if (ArrayBuffer.isView(obj)) {
-		return fromTypedArray(obj)
-	}
-
-	//FIXME: add AudioNode, stream detection
-
-	//else detect from obhect
-	return fromObject(obj)
-}
-
-
-/**
- * Get format id string.
- * Inspired by https://github.com/xdissent/node-alsa/blob/master/src/constants.coffee
- */
-function stringify (format) {
-	//TODO: extend possible special formats
-	var result = []
-
-	//(S|U)(8|16|24|32)_(LE|BE)?
-	result.push(format.float ? 'F' : (format.signed ? 'S' : 'U'))
-	result.push(format.bitDepth)
-	result.push(format.byteOrder)
-	result.push(format.channels)
-	result.push(format.sampleRate)
-	result.push(format.interleaved ? 'I' : 'N')
-
-	return result.join('_')
-}
-
-
-/**
- * Return format object from the format ID.
- * Returned format is not normalized for performance purposes (~10 times)
- * http://jsperf.com/parse-vs-extend/4
- */
-function parse (str) {
-	var params = str.split('_')
-	return {
-		float: params[0] === 'F',
-		signed: params[0] === 'S',
-		bitDepth: parseInt(params[1]),
-		byteOrder: params[2],
-		channels: parseInt(params[3]),
-		sampleRate: parseInt(params[4]),
-		interleaved: params[5] === 'I'
-	}
-}
-
-
-/**
- * Whether one format is equal to another
- */
-function equal (a, b) {
-	return (a.id || stringify(a)) === (b.id || stringify(b))
-}
-
-
-/**
- * Normalize format, mutable.
- * Precalculate format params: methodSuffix, id, maxInt.
- * Fill absent params.
- */
-function normalize (format) {
-	if (!format) format = {}
-
-	//bring default format values, if not present
-	formatProperties.forEach(function (key) {
-		if (format[key] == null) {
-			format[key] = defaultFormat[key]
-		}
-	})
-
-	//ensure float values
-	if (format.float) {
-		if (format.bitDepth != 64) format.bitDepth = 32
-		format.signed = true
-	}
-
-	//for words byte length does not matter
-	else if (format.bitDepth <= 8) format.byteOrder = ''
-
-	//max/min values
-	if (format.float) {
-		format.min = -1
-		format.max = 1
-	}
-	else {
-		format.max = Math.pow(2, format.bitDepth) - 1
-		format.min = 0
-		if (format.signed) {
-			format.min -= Math.ceil(format.max * 0.5)
-			format.max -= Math.ceil(format.max * 0.5)
-		}
-	}
-
-	//calc id
-	format.id = stringify(format)
-
-	return format
-}
-
-
-/** Convert AudioBuffer to Buffer with specified format */
-function toBuffer (audioBuffer, format) {
-	if (!isNormalized(format)) format = normalize(format)
-
-	var data = toArrayBuffer(audioBuffer)
-	var arrayFormat = fromTypedArray(audioBuffer.getChannelData(0))
-
-	var buffer = convert(data, {
-		float: true,
-		channels: audioBuffer.numberOfChannels,
-		sampleRate: audioBuffer.sampleRate,
-		interleaved: false,
-		bitDepth: arrayFormat.bitDepth
-	}, format)
-
-	return buffer
-}
-
-
-/** Convert Buffer to AudioBuffer with specified format */
-function toAudioBuffer (buffer, format) {
-	if (!isNormalized(format)) format = normalize(format)
-
-	buffer = convert(buffer, format, {
-		channels: format.channels,
-		sampleRate: format.sampleRate,
-		interleaved: false,
-		float: true
-	})
-
-	return new AudioBuffer(format.channels, buffer, format.sampleRate)
-}
-
-
-/**
- * Convert buffer from format A to format B.
- */
-function convert (buffer, from, to) {
-	//ensure formats are full
-	if (!isNormalized(from)) from = normalize(from)
-	if (!isNormalized(to)) to = normalize(to)
-
-	//ignore needless conversion
-	if (equal(from ,to)) {
-		return buffer
-	}
-
-	//convert buffer to arrayBuffer
-	var data = toArrayBuffer(buffer)
-
-	//create containers for conversion
-	var fromArray = new (arrayClass(from))(data)
-
-	//toArray is automatically filled with mapped values
-	//but in some cases mapped badly, e. g. float → int(round + rotate)
-	var toArray = new (arrayClass(to))(fromArray)
-
-	//if range differ, we should apply more thoughtful mapping
-	if (from.max !== to.max) {
-		fromArray.forEach(function (value, idx) {
-			//ignore not changed range
-			//bring to 0..1
-			var normalValue = (value - from.min) / (from.max - from.min)
-
-			//bring to new format ranges
-			value = normalValue * (to.max - to.min) + to.min
-
-			//clamp (buffers does not like values outside of bounds)
-			toArray[idx] = Math.max(to.min, Math.min(to.max, value))
-		})
-	}
-
-	//reinterleave, if required
-	if (from.interleaved != to.interleaved) {
-		var channels = from.channels
-		var len = Math.floor(fromArray.length / channels)
-
-		//deinterleave
-		if (from.interleaved && !to.interleaved) {
-			toArray = toArray.map(function (value, idx, data) {
-				var targetOffset = idx % len
-				var targetChannel = ~~(idx / len)
-
-				return data[targetOffset * channels + targetChannel]
-			})
-		}
-		//interleave
-		else if (!from.interleaved && to.interleaved) {
-			toArray = toArray.map(function (value, idx, data) {
-				var targetOffset = ~~(idx / channels)
-				var targetChannel = idx % channels
-
-				return data[targetChannel * len + targetOffset]
-			})
-		}
-	}
-
-	//ensure endianness
-	if (!to.float && from.byteOrder !== to.byteOrder) {
-		var le = to.byteOrder === 'LE'
-		var view = new DataView(toArray.buffer)
-		var step = to.bitDepth / 8
-		var methodName = 'set' + getDataViewSuffix(to)
-		for (var i = 0, l = toArray.length; i < l; i++) {
-			view[methodName](i*step, toArray[i], le)
-		}
-	}
-
-	return new Buffer(toArray.buffer)
-}
-
-
-/**
- * Check whether format is normalized, at least once
- */
-function isNormalized (format) {
-	return format && format.id
-}
-
-
-/**
- * Create typed array for the format, filling with the data (ArrayBuffer)
- */
-function arrayClass (format) {
-	if (!isNormalized(format)) format = normalize(format)
-
-	if (format.float) {
-		if (format.bitDepth > 32) {
-			return Float64Array
-		}
-		else {
-			return Float32Array
-		}
-	}
-	else {
-		if (format.bitDepth === 32) {
-			return format.signed ? Int32Array : Uint32Array
-		}
-		else if (format.bitDepth === 8) {
-			return format.signed ? Int8Array : Uint8Array
-		}
-		//default case
-		else {
-			return format.signed ? Int16Array : Uint16Array
-		}
-	}
-}
-
-
-/**
- * Get format info from the array type
- */
-function fromTypedArray (array) {
-	if (array instanceof Int8Array) {
-		return {
-			float: false,
-			signed: true,
-			bitDepth: 8
-		}
-	}
-	if ((array instanceof Uint8Array) || (array instanceof Uint8ClampedArray)) {
-		return {
-			float: false,
-			signed: false,
-			bitDepth: 8
-		}
-	}
-	if (array instanceof Int16Array) {
-		return {
-			float: false,
-			signed: true,
-			bitDepth: 16
-		}
-	}
-	if (array instanceof Uint16Array) {
-		return {
-			float: false,
-			signed: false,
-			bitDepth: 16
-		}
-	}
-	if (array instanceof Int32Array) {
-		return {
-			float: false,
-			signed: true,
-			bitDepth: 32
-		}
-	}
-	if (array instanceof Uint32Array) {
-		return {
-			float: false,
-			signed: false,
-			bitDepth: 32
-		}
-	}
-	if (array instanceof Float32Array) {
-		return {
-			float: true,
-			signed: false,
-			bitDepth: 32
-		}
-	}
-	if (array instanceof Float64Array) {
-		return {
-			float: true,
-			signed: false,
-			bitDepth: 64
-		}
-	}
-
-	//other dataview types are Uint8Arrays
-	return {
-		float: false,
-		signed: false,
-		bitDepth: 8
-	}
-}
-
-
-/**
- * Retrieve format info from object
- */
-function fromObject (obj) {
-	//else retrieve format properties from object
-	var format = {}
-
-	formatProperties.forEach(function (key) {
-		if (obj[key] != null) format[key] = obj[key]
-	})
-
-	//some AudioNode/etc-specific options
-	if (obj.channelCount != null) {
-		format.channels = obj.channelCount
-	}
-
-	return format
-}
-
-
-/**
- * e. g. Float32, Uint16LE
- * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView
- */
-function getDataViewSuffix (format) {
-	return (format.float ? 'Float' : format.signed ? 'Int' : 'Uint') + format.bitDepth
-}
-
-
-
-module.exports = {
-	defaults: defaultFormat,
-	format: getFormat,
-	normalize: normalize,
-	equal: equal,
-	toBuffer: toBuffer,
-	toAudioBuffer: toAudioBuffer,
-	convert: convert
-}
-
-}).call(this,require("buffer").Buffer)
-},{"audio-buffer":11,"buffer":89,"is-audio-buffer":46,"os":96,"to-array-buffer":73}],11:[function(require,module,exports){
-arguments[4][6][0].apply(exports,arguments)
-},{"audio-context":7,"buffer-to-arraybuffer":20,"dup":6,"is-audio-buffer":46,"is-browser":47,"is-buffer":48,"is-plain-obj":51}],12:[function(require,module,exports){
-/**
- * @module  audio-generator
- */
-'use strict';
-
-var AudioThrough = require('audio-through');
-var Generator = require('./index');
-
-module.exports = function Stream (fn, opts) {
-	//create sync map
-	let fill = Generator(fn, opts);
-
-	//create through-instance
-	return new AudioThrough(fill, opts);
-};
-
-},{"./index":9,"audio-through":13}],13:[function(require,module,exports){
-/**
- * @module audio-through
- */
-'use strict';
-
-var Transform = require('stream').Transform;
-var pcm = require('pcm-util');
-var inherits = require('inherits');
-var extend = require('object-assign');
-var isPromise = require('is-promise');
-var context = require('audio-context');
-var AudioBuffer = require('audio-buffer');
-var isAudioBuffer = require('is-audio-buffer');
-var now = require('performance-now');
-
-
-module.exports = Through;
-
-
-var streamCount = 0;
-
-
-/**
- * Display logs in console
- */
-Through.log = false;
-
-
-/**
- * Create stream instance
- *
- * @constructor
- */
-function Through (fn, options) {
-	if (!(this instanceof Through)) return new Through(fn, options);
-
-	var self = this;
-
-	//save started processing time
-	self._creationTime = now();
-
-	Transform.call(self, {
-		//we need object mode to share passed AudioBuffer between piped streams
-		objectMode: true,
-
-		//to keep processing delays very short, in case if we need RT binding.
-		//otherwise each stream will hoard data and release only when it’s full.
-		highWaterMark: 0
-	});
-
-	//just get unique id
-	self._id = streamCount++;
-	// self.log('create', self._id);
-
-	//passed data count
-	self.count = 0;
-
-	//current processing time, in sound time
-	self.time = 0;
-
-	//passed frames counter
-	self.frame = 0;
-
-	//set of tasks to perform
-	self._tasks = [];
-
-	// //table of planned time events
-	// self._plan = [];
-
-	// //table of scheduled events
-	// self._schedule = [];
-
-	//handle options - which are the input format as well
-	options = options || {};
-
-	if (typeof fn === 'function') {
-		options.process = fn;
-	}
-	//shift arguments (format-transform stream)
-	else {
-		format = options || {};
-		options = fn || {};
-	}
-
-	//ensure input format
-	var format = pcm.format(options);
-	pcm.normalize(format);
-	options.format = format;
-
-	//take over options,
-	extend(self, options);
-
-	//ensure format values are present on self
-	extend(self, self.format);
-
-	if (!self.context && context) self.context = context()
-
-	//manage input pipes number
-	self.on('pipe', function (source) {
-		self.inputsCount++;
-
-		//loose source virginity
-		if (self.generator == null) self.generator = false;
-
-	}).on('unpipe', function (source) {
-		self.inputsCount--;
-	});
-
-	//set state active
-	self.state = 'normal';
-}
-
-
-/**
- * Set duplex behaviour
- */
-inherits(Through, Transform);
-
-
-/**
- * Number of active input connections
- */
-Through.prototype.inputsCount = 0;
-
-
-Object.defineProperties(Through.prototype, {
-	/**
-	 * Number of active output connections - exists in readable stream
-	 */
-	outputsCount: {
-		get: function () {
-			return this._readableState.pipesCount
-		},
-		set: function (value) {
-			throw Error('outputsCount is read-only');
-		}
-	}
-});
-
-
-/**
- * Extend piping
- */
-Through.prototype.pipe = function (to) {
-	var self = this;
-
-	//detect if we need casting output to buffer (hits performance)
-	if (self.writableObjectMode && (!to._writableState || !to._writableState.objectMode)) {
-		self.writableObjectMode = false;
-	}
-
-	//lose sink virginity
-	if (self.sink == null) self.sink = false;
-
-	return Transform.prototype.pipe.call(self, to);
-};
-
-
-/**
- * Whether we need to cast AudioBuffer to Buffer in output.
- */
-Through.prototype.writableObjectMode = true;
-
-
-/**
- * Indicator of whether should be a sink.
- * Automatically set to false once the stream is connected to anything.
- */
-Through.prototype.sink = undefined;
-
-/**
- * Indicator whether it is a source
- * Auto-set to false once anything is connected to the stream.
- */
-Through.prototype.generator = undefined;
-
-
-/**
- * Current state of audio node, spec + extended by the methods.
- *
- * normal
- * ended
- *
- * playing?
- * connection?
- * tail-time?
- * muted?
- * error?
- * processing/waiting?
- * limit?
- * solo?
- * playing?
- */
-Through.prototype.state = undefined;
-
-
-Through.prototype.context;
-
-
-/**
- * Plan stream closing.
- * Overrides stream’s end.
- */
-Through.prototype.end = function () {
-	var self = this;
-
-	self._isEndCalled = true;
-
-	//plan invocation of end
-	self._tasks.push(function () {
-		if (this.state === 'ended') return;
-
-		this.state = 'ended';
-
-		this.process.end && this.process.end();
-
-		var triggered = false;
-		this.once('end', function () {
-			triggered = true;
-		});
-		Transform.prototype.end.call(this);
-
-		//timeout cb, because native end emits after a tick
-		var that = this;
-		setTimeout(function () {
-			if (!triggered) {
-				that.emit('end');
-			}
-		});
-
-
-		this.log('end');
-
-		//FIXME: the case for that is when being connected to simple streams
-		//this causes them throw error of after-write, weird.
-		//I seems to be not the only who faced with that: https://twitter.com/yoshuawuyts/status/718256330197348356
-		this.unpipe();
-	});
-
-	return self;
-};
-
-
-/**
- * Just call the planned tasks
- */
-Through.prototype.doTasks = function () {
-	var self = this;
-	var task;
-	while(task = self._tasks.shift()) {
-		task.call(self);
-	}
-	return self;
-};
-
-
-/**
- * Throw inobstructive error. Does not stop stream.
- */
-Through.prototype.error = function (error) {
-	var self = this;
-
-	//ensure error format
-	error = error instanceof Error ? error : Error(error);
-
-	if (Through.log) console.error(pfx(self), error.message);
-
-	//emit error event
-	self.emit('error', error);
-
-	this.end();
-
-	return self;
-};
-
-
-/**
- * Same as error, but for logging purposes
- */
-Through.prototype.log = function () {
-	if (!Through.log) return self;
-
-	var self = this;
-	var args = [].slice.call(arguments);
-	var str = [].join.call(args, ' ');
-	console.log(pfx(self), str);
-	return self;
-};
-
-
-/**
- * Return prefix for logging
- */
-function pfx (self) {
-	return '#' + self._id + ' ' + (now() - self._creationTime).toFixed(0) + 'ms';
-};
-
-
-
-/**
- * Processing method, supposed to be overridden.
- * Basically provides a chunk with data and expects user to fill that.
- * If returned a promise, then will wait till it is resolved.
- */
-Through.prototype.process = function (buffer) {};
-
-
-/**
- * Invoke _process for a chunk.
- */
-Through.prototype._process = function (buffer, cb) {
-	var self = this;
-
-	//ensure buffer is AudioBuffer
-	if (!isAudioBuffer(buffer)) {
-
-		buffer = pcm.toAudioBuffer(buffer, self.format);
-
-	}
-
-	//provide hook
-	self.emit('beforeProcess', buffer);
-
-	//send buffer to processor - do sync or async altogether, define further steps after
-	//because sync/async can vary
-	//NOTE: why not promise? promise causes processor tick between executor and `then`.
-	try {
-		var result = self.process(buffer, _handleResult);
-	} catch (e) {
-		_handleResult(e);
-	}
-
-	//if expected more than one argument - execution was async (like mocha)
-	//also if it is not a source and not destination with one arg - force awaiting the callback (no sinks by default)
-	if (self.process.length === 2 || (!self.outputsCount && self.sink == false) ) {
-		//but in case if result is not undefined - then it is still sync
-		if (result === undefined) {
-			return self;
-		}
-	}
-	//handle sync error
-	if (result instanceof Error) {
-		_handleResult(result);
-	}
-
-	else {
-		_handleResult(null, result);
-	}
-
-	function _handleResult (err, result) {
-		//ignore double-call of _handleResult (e. g. user mistakenly called 2 times)
-		if (self.state === 'ended' || self._isEndCalled) return self.doTasks();
-
-		//handle error
-		if (err) {
-			self.error(err);
-		}
-
-		//if result is null - just finish the processing
-		if (result === null) {
-			return self.end().doTasks();
-		}
-
-		//if no return - then user is wisely just modified input buffer
-		if (!result) {
-			result = buffer;
-		}
-
-		//if returned a promise - wait
-		if (isPromise(result)) {
-			result.then(function (result) {
-				_handleResult(null, result);
-			}, self.error);
-
-			return;
-		}
-
-		//update counters
-		self.frame++;
-		self.count += result.length;
-		self.time = self.count / self.format.sampleRate;
-
-		//hook
-		self.emit('afterProcess', result);
-
-		//convert to buffer, if at least one output is natural node-stream
-		if (!self.writableObjectMode && isAudioBuffer(result)) {
-
-			result = pcm.toBuffer(result, self.format);
-
-		}
-
-		//release data
-		cb(err, result);
-
-		//do planned tasks, if any
-		self.doTasks();
-	};
-};
-
-
-/**
- * Transformer method
- */
-Through.prototype._transform = function (chunk, enc, cb) {
-	var self = this;
-
-	//ignore bad states
-	if (self.state === 'ended') return;
-
-	self._process(chunk, function (err, result) {
-		cb(err, result);
-	});
-};
-
-
-/**
- * Generator method
- */
-Through.prototype._read = function (size) {
-	var self = this;
-
-	//once been read - no more sink
-	if (self.sink == null) self.sink = false;
-
-	//in-middle case - be a transformer
-	//note that once it was a transformer - it will always remain a transformer
-	if (self.inputsCount || self.generator == false) {
-		return Transform.prototype._read.call(self, size);
-	}
-
-	//create buffer of needed size
-	var buffer = new AudioBuffer(self.format.samplesPerFrame);
-
-	//generate new chunk with silence
-	self._process(buffer, function (err, result) {
-		self.push(result);
-	});
-};
-
-
-/**
- * Sink method
- */
-Through.prototype._write = function (chunk, enc, cb) {
-	var self = this;
-
-	//ignore bad states (like, ended in between)
-	if (self.state === 'ended') return;
-
-	//once been written - no more generator
-	if (self.generator == null) self.generator = false;
-
-	//be a transformer, if in-between
-	if (self.outputsCount) {
-		return Transform.prototype._write.call(self, chunk, enc, cb);
-	}
-
-	//if no outputs but some inputs - be a sink
-	self._process(chunk, function (err, result) {
-		self.emit('data', result);
-		cb();
-	});
-};
-
-},{"audio-buffer":6,"audio-context":7,"inherits":45,"is-audio-buffer":46,"is-promise":52,"object-assign":59,"pcm-util":14,"performance-now":64,"stream":113}],14:[function(require,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"audio-buffer":6,"buffer":89,"dup":10,"is-audio-buffer":46,"os":96,"to-array-buffer":73}],15:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 
 /**
  * Expose `Backoff`.
@@ -2579,7 +192,7 @@ Backoff.prototype.setJitter = function(jitter){
 };
 
 
-},{}],16:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 /*
  * base64-arraybuffer
  * https://github.com/niklasvh/base64-arraybuffer
@@ -2648,32 +261,7 @@ Backoff.prototype.setJitter = function(jitter){
   };
 })();
 
-},{}],17:[function(require,module,exports){
-(function (Buffer){
-/* global Blob, FileReader */
-
-module.exports = function blobToBuffer (blob, cb) {
-  if (typeof Blob === 'undefined' || !(blob instanceof Blob)) {
-    throw new Error('first argument must be a Blob')
-  }
-  if (typeof cb !== 'function') {
-    throw new Error('second argument must be a function')
-  }
-
-  var reader = new FileReader()
-
-  function onLoadEnd (e) {
-    reader.removeEventListener('loadend', onLoadEnd, false)
-    if (e.error) cb(e.error)
-    else cb(null, Buffer.from(reader.result))
-  }
-
-  reader.addEventListener('loadend', onLoadEnd, false)
-  reader.readAsArrayBuffer(blob)
-}
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":89}],18:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 (function (global){
 /**
  * Create a blob builder even when vendor prefixes exist
@@ -2773,7 +361,7 @@ module.exports = (function() {
 })();
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],19:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (Buffer){
 var toString = Object.prototype.toString
 
@@ -2846,51 +434,7 @@ function bufferFrom (value, encodingOrOffset, length) {
 module.exports = bufferFrom
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":89}],20:[function(require,module,exports){
-(function (Buffer){
-(function(root) {
-  var isArrayBufferSupported = (new Buffer(0)).buffer instanceof ArrayBuffer;
-
-  var bufferToArrayBuffer = isArrayBufferSupported ? bufferToArrayBufferSlice : bufferToArrayBufferCycle;
-
-  function bufferToArrayBufferSlice(buffer) {
-    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
-  }
-
-  function bufferToArrayBufferCycle(buffer) {
-    var ab = new ArrayBuffer(buffer.length);
-    var view = new Uint8Array(ab);
-    for (var i = 0; i < buffer.length; ++i) {
-      view[i] = buffer[i];
-    }
-    return ab;
-  }
-
-  if (typeof exports !== 'undefined') {
-    if (typeof module !== 'undefined' && module.exports) {
-      exports = module.exports = bufferToArrayBuffer;
-    }
-    exports.bufferToArrayBuffer = bufferToArrayBuffer;
-  } else if (typeof define === 'function' && define.amd) {
-    define([], function() {
-      return bufferToArrayBuffer;
-    });
-  } else {
-    root.bufferToArrayBuffer = bufferToArrayBuffer;
-  }
-})(this);
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":89}],21:[function(require,module,exports){
-module.exports = clamp
-
-function clamp(value, min, max) {
-  return min < max
-    ? (value < min ? min : value > max ? max : value)
-    : (value < max ? max : value > min ? min : value)
-}
-
-},{}],22:[function(require,module,exports){
+},{"buffer":54}],8:[function(require,module,exports){
 (function (Buffer){
 var clone = (function() {
 'use strict';
@@ -3060,7 +604,7 @@ if (typeof module === 'object' && module.exports) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":89}],23:[function(require,module,exports){
+},{"buffer":54}],9:[function(require,module,exports){
 /**
  * Slice reference.
  */
@@ -3085,7 +629,7 @@ module.exports = function(obj, fn){
   }
 };
 
-},{}],24:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -3250,7 +794,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],25:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 
 module.exports = function(a, b){
   var fn = function(){};
@@ -3258,16 +802,7 @@ module.exports = function(a, b){
   a.prototype = new fn;
   a.prototype.constructor = a;
 };
-},{}],26:[function(require,module,exports){
-'use strict';
-
-module.exports = function () {
-	// data-uri scheme
-	// data:[<media type>][;charset=<character set>][;base64],<data>
-	return new RegExp(/^(data:)([\w\/\+]+);(charset=[\w-]+|base64).*,(.*)/gi);
-};
-
-},{}],27:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 (function (process){
 /**
  * This is the web browser implementation of `debug()`.
@@ -3466,7 +1001,7 @@ function localstorage() {
 }
 
 }).call(this,require('_process'))
-},{"./debug":28,"_process":98}],28:[function(require,module,exports){
+},{"./debug":13,"_process":63}],13:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -3693,7 +1228,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":57}],29:[function(require,module,exports){
+},{"ms":35}],14:[function(require,module,exports){
 var clone = require('clone');
 
 module.exports = function(options, defaults) {
@@ -3707,7 +1242,7 @@ module.exports = function(options, defaults) {
 
   return options;
 };
-},{"clone":22}],30:[function(require,module,exports){
+},{"clone":8}],15:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -3719,7 +1254,7 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":31,"engine.io-parser":39}],31:[function(require,module,exports){
+},{"./socket":16,"engine.io-parser":24}],16:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -4466,7 +2001,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./transport":32,"./transports/index":33,"component-emitter":24,"debug":27,"engine.io-parser":39,"indexof":44,"parseqs":60,"parseuri":61}],32:[function(require,module,exports){
+},{"./transport":17,"./transports/index":18,"component-emitter":10,"debug":12,"engine.io-parser":24,"indexof":30,"parseqs":36,"parseuri":37}],17:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -4625,7 +2160,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"component-emitter":24,"engine.io-parser":39}],33:[function(require,module,exports){
+},{"component-emitter":10,"engine.io-parser":24}],18:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies
@@ -4682,7 +2217,7 @@ function polling (opts) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling-jsonp":34,"./polling-xhr":35,"./websocket":37,"xmlhttprequest-ssl":38}],34:[function(require,module,exports){
+},{"./polling-jsonp":19,"./polling-xhr":20,"./websocket":22,"xmlhttprequest-ssl":23}],19:[function(require,module,exports){
 (function (global){
 
 /**
@@ -4917,7 +2452,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":36,"component-inherit":25}],35:[function(require,module,exports){
+},{"./polling":21,"component-inherit":11}],20:[function(require,module,exports){
 (function (global){
 /**
  * Module requirements.
@@ -5333,7 +2868,7 @@ function unloadHandler () {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":36,"component-emitter":24,"component-inherit":25,"debug":27,"xmlhttprequest-ssl":38}],36:[function(require,module,exports){
+},{"./polling":21,"component-emitter":10,"component-inherit":11,"debug":12,"xmlhttprequest-ssl":23}],21:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -5580,7 +3115,7 @@ Polling.prototype.uri = function () {
   return schema + '://' + (ipv6 ? '[' + this.hostname + ']' : this.hostname) + port + this.path + query;
 };
 
-},{"../transport":32,"component-inherit":25,"debug":27,"engine.io-parser":39,"parseqs":60,"xmlhttprequest-ssl":38,"yeast":83}],37:[function(require,module,exports){
+},{"../transport":17,"component-inherit":11,"debug":12,"engine.io-parser":24,"parseqs":36,"xmlhttprequest-ssl":23,"yeast":49}],22:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -5870,7 +3405,7 @@ WS.prototype.check = function () {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transport":32,"component-inherit":25,"debug":27,"engine.io-parser":39,"parseqs":60,"ws":87,"yeast":83}],38:[function(require,module,exports){
+},{"../transport":17,"component-inherit":11,"debug":12,"engine.io-parser":24,"parseqs":36,"ws":53,"yeast":49}],23:[function(require,module,exports){
 (function (global){
 // browser shim for xmlhttprequest module
 
@@ -5911,7 +3446,7 @@ module.exports = function (opts) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"has-cors":43}],39:[function(require,module,exports){
+},{"has-cors":29}],24:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -6521,7 +4056,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./keys":40,"./utf8":41,"after":1,"arraybuffer.slice":2,"base64-arraybuffer":16,"blob":18,"has-binary2":42}],40:[function(require,module,exports){
+},{"./keys":25,"./utf8":26,"after":1,"arraybuffer.slice":2,"base64-arraybuffer":5,"blob":6,"has-binary2":28}],25:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -6542,7 +4077,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],41:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/utf8js v2.1.2 by @mathias */
 ;(function(root) {
@@ -6801,7 +4336,118 @@ module.exports = Object.keys || function keys (obj){
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],42:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
+// loosely based on example code at https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+(function (root) {
+  'use strict';
+
+  /**
+   * Error thrown when any required feature is missing (Promises, navigator, getUserMedia)
+   * @constructor
+   */
+  function NotSupportedError() {
+    this.name = 'NotSupportedError';
+    this.message = 'getUserMedia is not implemented in this browser';
+  }
+  NotSupportedError.prototype = Error.prototype;
+
+  /**
+   * Fake Promise instance that behaves like a Promise except that it always rejects with a NotSupportedError.
+   * Used for situations where there is no global Promise constructor.
+   *
+   * The message will report that the getUserMedia API is not available.
+   * This is technically true because every browser that supports getUserMedia also supports promises.
+   **
+   * @see http://caniuse.com/#feat=stream
+   * @see http://caniuse.com/#feat=promises
+   * @constructor
+   */
+  function FakePromise() {
+    // make it chainable like a real promise
+    this.then = function() {
+      return this;
+    };
+
+    // but always reject with an error
+    var err = new NotSupportedError();
+    this.catch = function(cb) {
+      setTimeout(function () {
+        cb(err);
+      });
+    }
+  }
+
+  var isPromiseSupported = typeof Promise !== 'undefined';
+
+  // checks for root.navigator to enable server-side rendering of things that depend on this
+  // (will need to be updated on client, but at least doesn't throw this way)
+  var navigatorExists = typeof navigator !== "undefined";
+  // gump = mondern promise-based interface
+  // gum = old callback-based interface
+  var gump = navigatorExists && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+  var gum = navigatorExists && (navigator.getUserMedia || navigator.webkitGetUserMedia ||  navigator.mozGetUserMedia || navigator.msGetUserMedia);
+
+  /**
+   * Wrapper for navigator.mediaDevices.getUserMedia.
+   * Always returns a Promise or Promise-like object, even in environments without a global Promise constructor
+   *
+   * @stream https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+   *
+   * @param {Object} constraints - must include one or both of audio/video along with optional details for video
+   * @param {Boolean} [constraints.audio] - include audio data in the stream
+   * @param {Boolean|Object} [constraints.video] - include video data in the stream. May be a boolean or an object with additional constraints, see
+   * @returns {Promise<MediaStream>} a promise that resolves to a MediaStream object
+     */
+  function getUserMedia(constraints) {
+    // ensure that Promises are supported and we have a navigator object
+    if (!isPromiseSupported) {
+      return new FakePromise();
+    }
+
+    // Try the more modern, promise-based MediaDevices API first
+    //https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+    if(gump) {
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }
+
+    // fall back to the older method second, wrap it in a promise.
+    return new Promise(function(resolve, reject) {
+      // if navigator doesn't exist, then we can't use the getUserMedia API. (And probably aren't even in a browser.)
+      // assuming it does, try getUserMedia and then all of the prefixed versions
+
+      if (!gum) {
+        return reject(new NotSupportedError());
+      }
+      gum.call(navigator, constraints, resolve, reject);
+    });
+  }
+
+  getUserMedia.NotSupportedError = NotSupportedError;
+
+  // eslint-disable-next-line no-implicit-coercion
+  getUserMedia.isSupported = !!(isPromiseSupported && (gump || gum));
+
+  // UMD, loosely based on https://github.com/umdjs/umd/blob/master/templates/returnExportsGlobal.js
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+    define([], function () {
+      return getUserMedia;
+    });
+  } else if (typeof module === 'object' && module.exports) {
+    // Node. Does not work with strict CommonJS, but
+    // only CommonJS-like enviroments that support module.exports,
+    // like Node.
+    module.exports = getUserMedia;
+  } else {
+    // Browser globals
+    // polyfill the MediaDevices API if it does not exist.
+    root.navigator || (root.navigator = {});
+    root.navigator.mediaDevices || (root.navigator.mediaDevices = {});
+    root.navigator.mediaDevices.getUserMedia || (root.navigator.mediaDevices.getUserMedia = getUserMedia);
+  }
+}(this));
+
+},{}],28:[function(require,module,exports){
 (function (global){
 /* global Blob File */
 
@@ -6867,7 +4513,7 @@ function hasBinary (obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":53}],43:[function(require,module,exports){
+},{"isarray":32}],29:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -6886,7 +4532,7 @@ try {
   module.exports = false;
 }
 
-},{}],44:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -6897,32 +4543,7 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],45:[function(require,module,exports){
-if (typeof Object.create === 'function') {
-  // implementation from standard node.js 'util' module
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    ctor.prototype = Object.create(superCtor.prototype, {
-      constructor: {
-        value: ctor,
-        enumerable: false,
-        writable: true,
-        configurable: true
-      }
-    });
-  };
-} else {
-  // old school shim for old browsers
-  module.exports = function inherits(ctor, superCtor) {
-    ctor.super_ = superCtor
-    var TempCtor = function () {}
-    TempCtor.prototype = superCtor.prototype
-    ctor.prototype = new TempCtor()
-    ctor.prototype.constructor = ctor
-  }
-}
-
-},{}],46:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
 /**
  * @module  is-audio-buffer
  */
@@ -6939,287 +4560,162 @@ module.exports = function isAudioBuffer (buffer) {
 	&& typeof buffer.duration === 'number'
 };
 
-},{}],47:[function(require,module,exports){
-module.exports = true;
-},{}],48:[function(require,module,exports){
-/*!
- * Determine if an object is a Buffer
- *
- * @author   Feross Aboukhadijeh <https://feross.org>
- * @license  MIT
- */
-
-// The _isBuffer check is for Safari 5-7 support, because it's missing
-// Object.prototype.constructor. Remove this eventually
-module.exports = function (obj) {
-  return obj != null && (isBuffer(obj) || isSlowBuffer(obj) || !!obj._isBuffer)
-}
-
-function isBuffer (obj) {
-  return !!obj.constructor && typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj)
-}
-
-// For Node v0.10 support. Remove this eventually.
-function isSlowBuffer (obj) {
-  return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
-}
-
-},{}],49:[function(require,module,exports){
-'use strict';
-
-var re = require('data-uri-regex');
-
-module.exports = function (data) {
-	return (data && re().test(data)) === true;
-};
-
-},{"data-uri-regex":26}],50:[function(require,module,exports){
-'use strict';
-
-module.exports = function isNegativeZero(number) {
-	return number === 0 && (1 / number) === -Infinity;
-};
-
-
-},{}],51:[function(require,module,exports){
-'use strict';
-var toString = Object.prototype.toString;
-
-module.exports = function (x) {
-	var prototype;
-	return toString.call(x) === '[object Object]' && (prototype = Object.getPrototypeOf(x), prototype === null || prototype === Object.getPrototypeOf({}));
-};
-
-},{}],52:[function(require,module,exports){
-module.exports = isPromise;
-
-function isPromise(obj) {
-  return !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
-}
-
-},{}],53:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],54:[function(require,module,exports){
-module.exports = require('./lib/mic');
+},{}],33:[function(require,module,exports){
+(function (process){
+'use strict';
+var Readable = require('stream').Readable;
+var util = require('util');
+// some versions of the buffer browser lib don't support Buffer.from (such as the one included by the current version of express-browserify)
+var bufferFrom = require('buffer-from');
 
-},{"./lib/mic":55}],55:[function(require,module,exports){
-var spawn = require('child_process').spawn;
-var isMac = require('os').type() == 'Darwin';
-var isWindows = require('os').type().indexOf('Windows') > -1;
-var IsSilence = require('./silenceTransform.js');
-var PassThrough = require('stream').PassThrough;
+/**
+ * Turns a MediaStream object (from getUserMedia) into a Node.js Readable stream and optionally converts the audio to Buffers
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Navigator/getUserMedia
+ *
+ * @param {Object} [opts] options
+ * @param {MediaStream} [opts.stream] https://developer.mozilla.org/en-US/docs/Web/API/MediaStream - for iOS compatibility, it is recommended that you create the MicrophoneStream instance in response to the tap - before you have a MediaStream, and then later call setStream() with the MediaStream.
+ * @param {Boolean} [opts.objectMode=false] Puts the stream into ObjectMode where it emits AudioBuffers instead of Buffers - see https://developer.mozilla.org/en-US/docs/Web/API/AudioBuffer
+ * @param {Number|null} [opts.bufferSize=null] https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createScriptProcessor
+ * @param {AudioContext} [opts.context] - AudioContext - will be automatically created if not passed in
+ * @constructor
+ */
+function MicrophoneStream(opts) {
+  // backwards compatibility - passing in the Stream here will generally not work on iOS 11 Safari
+  if (typeof MediaStream !== 'undefined' && opts instanceof MediaStream) {
+    var stream = opts;
+    opts = arguments[1] || {};
+    opts.stream = stream;
+  }
 
-var mic = function mic(options) {
-    options = options || {};
-    var that = {};
-    var endian = options.endian || 'little';
-    var bitwidth = options.bitwidth || '16';
-    var encoding = options.encoding || 'signed-integer';
-    var rate = options.rate || '16000';
-    var channels = options.channels || '1';
-    var device = options.device || 'plughw:1,0';
-    var exitOnSilence = options.exitOnSilence || 0;
-    var fileType = options.fileType || 'raw';
-    var debug = options.debug || false;
-    var format, formatEndian, formatEncoding;
-    var audioProcess = null;
-    var infoStream = new PassThrough;
-    var audioStream = new IsSilence({debug: debug});
-    var audioProcessOptions = {
-        stdio: ['ignore', 'pipe', 'ignore']
-    };
+  opts = opts || {};
 
-    if(debug) {
-        audioProcessOptions.stdio[2] = 'pipe';
+  // "It is recommended for authors to not specify this buffer size and allow the implementation to pick a good
+  // buffer size to balance between latency and audio quality."
+  // https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/createScriptProcessor
+  // however, webkitAudioContext (safari) requires it to be set'
+  // Possible values: null, 256, 512, 1024, 2048, 4096, 8192, 16384
+  var bufferSize = (typeof window.AudioContext === 'undefined' ? 4096 : null);
+  bufferSize = opts.bufferSize || bufferSize;
+
+  // We can only emit one channel's worth of audio, so only one input. (Who has multiple microphones anyways?)
+  var inputChannels = 1;
+
+  // we shouldn't need any output channels (going back to the browser), but chrome is buggy and won't give us any audio without one
+  var outputChannels = 1;
+
+  Readable.call(this, opts);
+
+  var self = this;
+  var recording = true;
+
+  /**
+   * Convert and emit the raw audio data
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/ScriptProcessorNode/onaudioprocess
+   * @param {AudioProcessingEvent} e https://developer.mozilla.org/en-US/docs/Web/API/AudioProcessingEvent
+   */
+  function recorderProcess(e) {
+    // onaudioprocess can be called at least once after we've stopped
+    if (recording) {
+      self.push(opts.objectMode ? e.inputBuffer : bufferFrom(e.inputBuffer.getChannelData(0).buffer));
     }
+  }
 
-    // Setup format variable for arecord call
-    if(endian === 'big') {
-        formatEndian = 'BE';
-    } else {
-        formatEndian = 'LE';
+  var AudioContext = window.AudioContext || window.webkitAudioContext;
+  var context = this.context = opts.context || new AudioContext();
+  var recorder = context.createScriptProcessor(bufferSize, inputChannels, outputChannels);
+
+  // other half of workaround for chrome bugs
+  recorder.connect(context.destination);
+
+  var audioInput;
+
+  /**
+   * Set the MediaStream
+   *
+   * This was separated from the constructor to enable better compatibility with Safari on iOS 11.
+   *
+   * Typically the stream is only available asynchronously, but the context must be created or resumed directly in
+   * response to a user's tap on iOS.
+   *
+   * @param {MediaStream} stream https://developer.mozilla.org/en-US/docs/Web/API/MediaStream
+   */
+  this.setStream = function(stream) {
+    this.stream = stream;
+    audioInput = context.createMediaStreamSource(stream);
+    audioInput.connect(recorder);
+    recorder.onaudioprocess = recorderProcess;
+  };
+
+  if (opts.stream) {
+    this.setStream(stream);
+  }
+
+
+  this.stop = function() {
+    if (context.state === 'closed') {
+      return;
     }
-    if(encoding === 'unsigned-integer') {
-        formatEncoding = 'U';
-    } else {
-        formatEncoding = 'S';
+    try {
+      this.stream.getTracks()[0].stop();
+    } catch (ex) {
+      // This fails in some older versions of chrome. Nothing we can do about it.
     }
-    format = formatEncoding + bitwidth + '_' + formatEndian;
-    audioStream.setNumSilenceFramesExitThresh(parseInt(exitOnSilence, 10));
-
-    that.start = function start() {
-          if(audioProcess === null) {
-            if(isWindows){
-              audioProcess = spawn('sox', ['-b', bitwidth, '--endian', endian,
-                                   '-c', channels, '-r', rate, '-e', encoding,
-                                   '-t', 'waveaudio', 'default', '-p'],
-                                    audioProcessOptions)
-            }
-            else if(isMac){
-              audioProcess = spawn('rec', ['-b', bitwidth, '--endian', endian,
-                                    '-c', channels, '-r', rate, '-e', encoding,
-                                    '-t', fileType, '-'], audioProcessOptions)
-            }
-            else {
-              audioProcess = spawn('arecord', ['-c', channels, '-r', rate, '-f',
-                                   format, '-D', device], audioProcessOptions);
-            }
-
-            audioProcess.on('exit', function(code, sig) {
-                    if(code != null && sig === null) {
-                        audioStream.emit('audioProcessExitComplete');
-                        if(debug) console.log("recording audioProcess has exited with code = %d", code);
-                    }
-                });
-            audioProcess.stdout.pipe(audioStream);
-            if(debug) {
-                audioProcess.stderr.pipe(infoStream);
-            }
-            audioStream.emit('startComplete');
-        } else {
-            if(debug) {
-                throw new Error("Duplicate calls to start(): Microphone already started!");
-            }
-        }
-    };
-
-    that.stop = function stop() {
-        if(audioProcess != null) {
-            audioProcess.kill('SIGTERM');
-            audioProcess = null;
-            audioStream.emit('stopComplete');
-            if(debug) console.log("Microhphone stopped");
-        }
-    };
-
-    that.pause = function pause() {
-        if(audioProcess != null) {
-            audioProcess.kill('SIGSTOP');
-            audioStream.pause();
-            audioStream.emit('pauseComplete');
-            if(debug) console.log("Microphone paused");
-        }
-    };
-
-    that.resume = function resume() {
-        if(audioProcess != null) {
-            audioProcess.kill('SIGCONT');
-            audioStream.resume();
-            audioStream.emit('resumeComplete');
-            if(debug) console.log("Microphone resumed");
-        }
+    recorder.disconnect();
+    if (audioInput) {
+      audioInput.disconnect();
     }
-
-    that.getAudioStream = function getAudioStream() {
-        return audioStream;
+    try {
+      context.close(); // returns a promise;
+    } catch (ex) {
+      // this can also fail in older versions of chrome
     }
+    recording = false;
+    self.push(null);
+    self.emit('close');
+  };
 
-    if(debug) {
-        infoStream.on('data', function(data) {
-                console.log("Received Info: " + data);
-            });
-        infoStream.on('error', function(error) {
-                console.log("Error in Info Stream: " + error);
-            });
-    }
-
-    return that;
+  process.nextTick(function() {
+    self.emit('format', {
+      channels: 1,
+      bitDepth: 32,
+      sampleRate: context.sampleRate,
+      signed: true,
+      float: true
+    });
+  });
 }
+util.inherits(MicrophoneStream, Readable);
 
-module.exports = mic;
-
-},{"./silenceTransform.js":56,"child_process":88,"os":96,"stream":113}],56:[function(require,module,exports){
-var Transform = require('stream').Transform;
-var util = require("util");
-
-function IsSilence(options) {
-    var that = this;
-    if (options && options.debug) {
-      that.debug = options.debug;
-      delete options.debug;
-    }
-    Transform.call(that, options);
-    var consecSilenceCount = 0;
-    var numSilenceFramesExitThresh = 0;
-
-    that.getNumSilenceFramesExitThresh = function getNumSilenceFramesExitThresh() {
-        return numSilenceFramesExitThresh;
-    };
-
-    that.getConsecSilenceCount = function getConsecSilenceCount() {
-        return consecSilenceCount;
-    };
-
-    that.setNumSilenceFramesExitThresh = function setNumSilenceFramesExitThresh(numFrames) {
-        numSilenceFramesExitThresh = numFrames;
-        return;
-    };
-
-    that.incrConsecSilenceCount = function incrConsecSilenceCount() {
-        consecSilenceCount++;
-        return consecSilenceCount;
-    };
-
-    that.resetConsecSilenceCount = function resetConsecSilenceCount() {
-        consecSilenceCount = 0;
-        return;
-    };
-};
-util.inherits(IsSilence, Transform);
-
-IsSilence.prototype._transform = function(chunk, encoding, callback) {
-    var i;
-    var speechSample;
-    var silenceLength = 0;
-    var self = this;
-    var debug = self.debug;
-    var consecutiveSilence = self.getConsecSilenceCount();
-    var numSilenceFramesExitThresh = self.getNumSilenceFramesExitThresh();
-    var incrementConsecSilence = self.incrConsecSilenceCount;
-    var resetConsecSilence = self.resetConsecSilenceCount;
-
-    if(numSilenceFramesExitThresh) {
-        for(i=0; i<chunk.length; i=i+2) {
-            if(chunk[i+1] > 128) {
-                speechSample = (chunk[i+1] - 256) * 256;
-            } else {
-                speechSample = chunk[i+1] * 256;
-            }
-            speechSample += chunk[i];
-
-            if(Math.abs(speechSample) > 2000) {
-                if (debug) {
-                  console.log("Found speech block");
-                }
-                resetConsecSilence();
-                break;
-            } else {
-                silenceLength++;
-            }
-
-        }
-        if(silenceLength == chunk.length/2) {
-            consecutiveSilence = incrementConsecSilence();
-            if (debug) {
-              console.log("Found silence block: %d of %d", consecutiveSilence, numSilenceFramesExitThresh);
-            }
-            //emit 'silence' only once each time the threshold condition is met
-            if( consecutiveSilence === numSilenceFramesExitThresh) {
-                self.emit('silence');
-            }
-        }
-    }
-    this.push(chunk);
-    callback();
+MicrophoneStream.prototype._read = function(/* bytes */) {
+  // no-op, (flow-control doesn't really work on live audio)
 };
 
-module.exports = IsSilence;
-},{"stream":113,"util":118}],57:[function(require,module,exports){
+/**
+ * Converts a Buffer back into the raw Float32Array format that browsers use.
+ * Note: this is just a new DataView for the same underlying buffer -
+ * the actual audio data is not copied or changed here.
+ *
+ * @param {Buffer} chunk node-style buffer of audio data from a 'data' event or read() call
+ * @return {Float32Array} raw 32-bit float data view of audio data
+ */
+MicrophoneStream.toRaw = function toFloat32(chunk) {
+  return new Float32Array(chunk.buffer);
+};
+
+module.exports = MicrophoneStream;
+
+}).call(this,require('_process'))
+},{"_process":63,"buffer-from":34,"stream":78,"util":83}],34:[function(require,module,exports){
+arguments[4][7][0].apply(exports,arguments)
+},{"buffer":54,"dup":7}],35:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -7373,107 +4869,7 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],58:[function(require,module,exports){
-/** @module negative-index */
-var isNeg = require('is-negative-zero');
-
-module.exports = function negIdx (idx, length) {
-	return idx == null ? 0 : isNeg(idx) ? length : idx <= -length ? 0 : idx < 0 ? (length + (idx % length)) : Math.min(length, idx);
-}
-
-},{"is-negative-zero":50}],59:[function(require,module,exports){
-/*
-object-assign
-(c) Sindre Sorhus
-@license MIT
-*/
-
-'use strict';
-/* eslint-disable no-unused-vars */
-var getOwnPropertySymbols = Object.getOwnPropertySymbols;
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-var propIsEnumerable = Object.prototype.propertyIsEnumerable;
-
-function toObject(val) {
-	if (val === null || val === undefined) {
-		throw new TypeError('Object.assign cannot be called with null or undefined');
-	}
-
-	return Object(val);
-}
-
-function shouldUseNative() {
-	try {
-		if (!Object.assign) {
-			return false;
-		}
-
-		// Detect buggy property enumeration order in older V8 versions.
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=4118
-		var test1 = new String('abc');  // eslint-disable-line no-new-wrappers
-		test1[5] = 'de';
-		if (Object.getOwnPropertyNames(test1)[0] === '5') {
-			return false;
-		}
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-		var test2 = {};
-		for (var i = 0; i < 10; i++) {
-			test2['_' + String.fromCharCode(i)] = i;
-		}
-		var order2 = Object.getOwnPropertyNames(test2).map(function (n) {
-			return test2[n];
-		});
-		if (order2.join('') !== '0123456789') {
-			return false;
-		}
-
-		// https://bugs.chromium.org/p/v8/issues/detail?id=3056
-		var test3 = {};
-		'abcdefghijklmnopqrst'.split('').forEach(function (letter) {
-			test3[letter] = letter;
-		});
-		if (Object.keys(Object.assign({}, test3)).join('') !==
-				'abcdefghijklmnopqrst') {
-			return false;
-		}
-
-		return true;
-	} catch (err) {
-		// We don't expect any of the above to throw, but better to be safe.
-		return false;
-	}
-}
-
-module.exports = shouldUseNative() ? Object.assign : function (target, source) {
-	var from;
-	var to = toObject(target);
-	var symbols;
-
-	for (var s = 1; s < arguments.length; s++) {
-		from = Object(arguments[s]);
-
-		for (var key in from) {
-			if (hasOwnProperty.call(from, key)) {
-				to[key] = from[key];
-			}
-		}
-
-		if (getOwnPropertySymbols) {
-			symbols = getOwnPropertySymbols(from);
-			for (var i = 0; i < symbols.length; i++) {
-				if (propIsEnumerable.call(from, symbols[i])) {
-					to[symbols[i]] = from[symbols[i]];
-				}
-			}
-		}
-	}
-
-	return to;
-};
-
-},{}],60:[function(require,module,exports){
+},{}],36:[function(require,module,exports){
 /**
  * Compiles a querystring
  * Returns string representation of the object
@@ -7512,7 +4908,7 @@ exports.decode = function(qs){
   return qry;
 };
 
-},{}],61:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -7553,7 +4949,7 @@ module.exports = function parseuri(str) {
     return uri;
 };
 
-},{}],62:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 /**
  * @module  pcm-util
  */
@@ -8022,7 +5418,7 @@ module.exports = {
 	convert: convert
 }
 
-},{"audio-buffer":63,"is-audio-buffer":46,"os":96}],63:[function(require,module,exports){
+},{"audio-buffer":39,"is-audio-buffer":31,"os":61}],39:[function(require,module,exports){
 /**
  * AudioBuffer class
  *
@@ -8135,47 +5531,7 @@ AudioBuffer.prototype.copyToChannel = function (source, channelNumber, startInCh
 };
 
 
-},{"audio-context":7}],64:[function(require,module,exports){
-(function (process){
-// Generated by CoffeeScript 1.12.2
-(function() {
-  var getNanoSeconds, hrtime, loadTime, moduleLoadTime, nodeLoadTime, upTime;
-
-  if ((typeof performance !== "undefined" && performance !== null) && performance.now) {
-    module.exports = function() {
-      return performance.now();
-    };
-  } else if ((typeof process !== "undefined" && process !== null) && process.hrtime) {
-    module.exports = function() {
-      return (getNanoSeconds() - nodeLoadTime) / 1e6;
-    };
-    hrtime = process.hrtime;
-    getNanoSeconds = function() {
-      var hr;
-      hr = hrtime();
-      return hr[0] * 1e9 + hr[1];
-    };
-    moduleLoadTime = getNanoSeconds();
-    upTime = process.uptime() * 1e9;
-    nodeLoadTime = moduleLoadTime - upTime;
-  } else if (Date.now) {
-    module.exports = function() {
-      return Date.now() - loadTime;
-    };
-    loadTime = Date.now();
-  } else {
-    module.exports = function() {
-      return new Date().getTime() - loadTime;
-    };
-    loadTime = new Date().getTime();
-  }
-
-}).call(this);
-
-
-
-}).call(this,require('_process'))
-},{"_process":98}],65:[function(require,module,exports){
+},{"audio-context":3}],40:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -8271,7 +5627,7 @@ exports.connect = lookup;
 exports.Manager = require('./manager');
 exports.Socket = require('./socket');
 
-},{"./manager":66,"./socket":68,"./url":69,"debug":27,"socket.io-parser":71}],66:[function(require,module,exports){
+},{"./manager":41,"./socket":43,"./url":44,"debug":12,"socket.io-parser":46}],41:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -8846,7 +6202,7 @@ Manager.prototype.onreconnect = function () {
   this.emitAll('reconnect', attempt);
 };
 
-},{"./on":67,"./socket":68,"backo2":15,"component-bind":23,"component-emitter":24,"debug":27,"engine.io-client":30,"indexof":44,"socket.io-parser":71}],67:[function(require,module,exports){
+},{"./on":42,"./socket":43,"backo2":4,"component-bind":9,"component-emitter":10,"debug":12,"engine.io-client":15,"indexof":30,"socket.io-parser":46}],42:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -8872,7 +6228,7 @@ function on (obj, ev, fn) {
   };
 }
 
-},{}],68:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -9309,7 +6665,7 @@ Socket.prototype.binary = function (binary) {
   return this;
 };
 
-},{"./on":67,"component-bind":23,"component-emitter":24,"debug":27,"has-binary2":42,"parseqs":60,"socket.io-parser":71,"to-array":74}],69:[function(require,module,exports){
+},{"./on":42,"component-bind":9,"component-emitter":10,"debug":12,"has-binary2":28,"parseqs":36,"socket.io-parser":46,"to-array":48}],44:[function(require,module,exports){
 (function (global){
 
 /**
@@ -9388,7 +6744,7 @@ function url (uri, loc) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"debug":27,"parseuri":61}],70:[function(require,module,exports){
+},{"debug":12,"parseuri":37}],45:[function(require,module,exports){
 (function (global){
 /*global Blob,File*/
 
@@ -9533,7 +6889,7 @@ exports.removeBlobs = function(data, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./is-buffer":72,"isarray":53}],71:[function(require,module,exports){
+},{"./is-buffer":47,"isarray":32}],46:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -9952,7 +7308,7 @@ function error(msg) {
   };
 }
 
-},{"./binary":70,"./is-buffer":72,"component-emitter":24,"debug":27,"isarray":53}],72:[function(require,module,exports){
+},{"./binary":45,"./is-buffer":47,"component-emitter":10,"debug":12,"isarray":32}],47:[function(require,module,exports){
 (function (global){
 
 module.exports = isBuf;
@@ -9980,74 +7336,7 @@ function isBuf(obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],73:[function(require,module,exports){
-/**
- * @module  to-array-buffer
- */
-
-var isAudioBuffer = require('is-audio-buffer');
-var isUri = require('is-data-uri')
-var atob = require('atob-lite')
-
-module.exports = function toArrayBuffer (arg, clone) {
-	//zero-length or undefined-like
-	if (!arg) return new ArrayBuffer();
-
-	//array buffer
-	if (arg instanceof ArrayBuffer) return clone ? arg.slice() : arg;
-
-	//array buffer view: TypedArray, DataView, Buffer etc
-	//FIXME: as only Buffer obtains the way to provide subArrayBuffer - use that
-	if (ArrayBuffer.isView(arg)) {
-		if (arg.byteOffset != null) return arg.buffer.slice(arg.byteOffset, arg.byteOffset + arg.byteLength);
-		return clone ? arg.buffer.slice() : arg.buffer;
-	}
-
-	//audio-buffer - note that we simply merge data by channels
-	//no encoding or cleverness involved
-	if (isAudioBuffer(arg)) {
-		var floatArray = arg.getChannelData(0).constructor;
-		var data = new floatArray(arg.length * arg.numberOfChannels);
-
-		for (var channel = 0; channel < arg.numberOfChannels; channel++) {
-			data.set(arg.getChannelData(channel), channel * arg.length);
-		}
-
-		return data.buffer;
-	}
-
-	//buffer/data nested: NDArray, ImageData etc.
-	//FIXME: NDArrays with custom data type may be invalid for this procedure
-	if (arg.buffer || arg.data) {
-		var result = toArrayBuffer(arg.buffer || arg.data);
-		return clone ? result.slice() : result;
-	}
-
-	//try to decode data-uri, if any
-	if (typeof arg === 'string') {
-		//valid data uri
-		if (isUri(arg)) {
-			var binary = atob(arg.split(',')[1]), array = [];
-			for(var i = 0; i < binary.length; i++) array.push(binary.charCodeAt(i));
-			return new Uint8Array(array)
-		}
-		//plain string
-		else {
-			var buf = new ArrayBuffer(arg.length*2); // 2 bytes for each char
-			var bufView = new Uint16Array(buf);
-			for (var i=0, strLen=arg.length; i<strLen; i++) {
-				bufView[i] = arg.charCodeAt(i);
-			}
-			return buf
-		}
-	}
-
-	//array-like or unknown
-	//hope Uint8Array knows better how to treat the input
-	return (new Uint8Array(arg.length != null ? arg : [arg])).buffer;
-}
-
-},{"atob-lite":3,"is-audio-buffer":46,"is-data-uri":49}],74:[function(require,module,exports){
+},{}],48:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -10062,575 +7351,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],75:[function(require,module,exports){
-
-/**
- * @module typedarray-polyfill
- */
-
-var methods = ['values', 'sort', 'some', 'slice', 'reverse', 'reduceRight', 'reduce', 'map', 'keys', 'lastIndexOf', 'join', 'indexOf', 'includes', 'forEach', 'find', 'findIndex', 'copyWithin', 'filter', 'entries', 'every', 'fill'];
-
-if (typeof Int8Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Int8Array.prototype[method]) Int8Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Uint8Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Uint8Array.prototype[method]) Uint8Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Uint8ClampedArray !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Uint8ClampedArray.prototype[method]) Uint8ClampedArray.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Int16Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Int16Array.prototype[method]) Int16Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Uint16Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Uint16Array.prototype[method]) Uint16Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Int32Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Int32Array.prototype[method]) Int32Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Uint32Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Uint32Array.prototype[method]) Uint32Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Float32Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Float32Array.prototype[method]) Float32Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof Float64Array !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!Float64Array.prototype[method]) Float64Array.prototype[method] = Array.prototype[method];
-    }
-}
-if (typeof TypedArray !== 'undefined') {
-    for (var i = methods.length; i--;) {
-        var method = methods[i];
-        if (!TypedArray.prototype[method]) TypedArray.prototype[method] = Array.prototype[method];
-    }
-}
-},{}],76:[function(require,module,exports){
-arguments[4][10][0].apply(exports,arguments)
-},{"audio-buffer":6,"buffer":89,"dup":10,"is-audio-buffer":46,"os":96,"to-array-buffer":73}],77:[function(require,module,exports){
-/**
- * @module  web-audio-stream/reader
- *
- * Read data from web-audio
- */
-
-'use strict';
-
-const extend = require('object-assign');
-
-module.exports = WAAReader;
-
-
-
-//@constructor
-function WAAReader (sourceNode, options) {
-	if (!sourceNode || !sourceNode.context) throw Error('Pass AudioNode instance first argument');
-
-	if (!options) {
-		options = {};
-	}
-
-	let context = sourceNode.context;
-
-	options = extend({
-		//the only available option for now
-		mode: WAAReader.SCRIPT_MODE,
-
-		samplesPerFrame: 1024
-	}, options);
-
-
-	let release;
-
-	//TODO: gate by SCRIPT_MODE
-	let node = context.createScriptProcessor(options.samplesPerFrame, options.channels, options.channels);
-
-	node.addEventListener('audioprocess', e => {
-		let cb = release;
-		release = null;
-		cb && cb(null, e.inputBuffer);
-	});
-
-	//scriptProcessor is active only being connected to output
-	sourceNode.connect(node);
-	node.connect(context.destination);
-
-	read.end = function () {
-		node.disconnect();
-		release = null;
-	}
-
-	return read;
-
-	function read (cb) {
-		if (cb === null) return read.end();
-
-		release = cb;
-	}
-
-}
-
-// WAAReader.WORKER_MODE = 2;
-// WAAReader.ANALYZER_MODE = 0;
-WAAReader.SCRIPT_MODE = 1;
-
-},{"object-assign":59}],78:[function(require,module,exports){
-/**
- * @module  web-audio-stram/readable
- *
- * Pipe web-audio to stream
- */
-
-'use strict';
-
-
-const inherits = require('inherits');
-const Readable = require('stream').Readable;
-const createReader = require('./read');
-
-module.exports = WAAReadable;
-
-
-inherits(WAAReadable, Readable);
-
-
-//@constructor
-function WAAReadable (node, options) {
-	if (!(this instanceof WAAReadable)) return new WAAReadable(node, options);
-
-	let read = createReader(node, options);
-
-	Readable.call(this, {
-		objectMode: true,
-
-		//to keep processing delays very short, in case of RT binding.
-		//otherwise each stream will hoard data and release only when it’s full.
-		highWaterMark: 0,
-
-		read: function (size) {
-			if (size === null) read.end();
-
-			read((err, buffer) => {
-				if (!err) this.push(buffer);
-			});
-		}
-	});
-
-	this.end = function () {
-		read.end();
-		return this;
-	}
-}
-
-// WAAReadable.WORKER_MODE = 2;
-// WAAReadable.ANALYZER_MODE = 0;
-WAAReadable.SCRIPT_MODE = 1;
-
-WAAReadable.prototype.mode = WAAReadable.prototype.SCRIPT_MODE;
-
-},{"./read":77,"inherits":45,"stream":113}],79:[function(require,module,exports){
-/**
- * @module web-audio-stream/stream
- */
-'use strict';
-
-var Writable = require('./writable');
-var Readable = require('./readable');
-
-Writable.Writable = Writable;
-Writable.Readable = Readable;
-
-module.exports = Writable;
-
-},{"./readable":78,"./writable":80}],80:[function(require,module,exports){
-/**
- * @module  web-audio-stream/writable
- *
- * Write stream data to web-audio.
- */
-'use strict';
-
-
-var inherits = require('inherits');
-var Writable = require('stream').Writable;
-var createWriter = require('./write');
-
-module.exports = WAAWritable;
-
-
-/**
- * @constructor
- */
-function WAAWritable (node, options) {
-	if (!(this instanceof WAAWritable)) return new WAAWritable(node, options);
-
-	let write = createWriter(node, options);
-
-	Writable.call(this, {
-		//we need object mode to recognize any type of input
-		objectMode: true,
-
-		//to keep processing delays very short, in case of RT binding.
-		//otherwise each stream will hoard data and release only when it’s full.
-		highWaterMark: 0,
-
-		write: (chunk, enc, cb) => {
-			return write(chunk, cb);
-		}
-	});
-
-
-	//manage input pipes number
-	this.inputsCount = 0;
-	this.on('pipe', (source) => {
-		this.inputsCount++;
-
-		//do autoend
-		source.once('end', () => {
-			this.end()
-		});
-
-	}).on('unpipe', (source) => {
-		this.inputsCount--;
-	})
-
-	//end writer
-	this.once('end', () => {
-		write.end()
-	})
-}
-
-
-inherits(WAAWritable, Writable);
-
-
-/**
- * Rendering modes
- */
-WAAWritable.WORKER_MODE = 2;
-WAAWritable.SCRIPT_MODE = 1;
-WAAWritable.BUFFER_MODE = 0;
-
-
-/**
- * There is an opinion that script mode is better.
- * https://github.com/brion/audio-feeder/issues/13
- *
- * But for me there are moments of glitch when it infinitely cycles sound. Very disappointing and makes feel desperate.
- *
- * But buffer mode also tend to create noisy clicks. Not sure why, cannot remove that.
- * With script mode I at least defer my responsibility.
- */
-WAAWritable.prototype.mode = WAAWritable.SCRIPT_MODE;
-
-
-/** Count of inputs */
-WAAWritable.prototype.inputsCount = 0;
-
-
-/**
- * Overrides stream’s end to ensure event.
- */
-//FIXME: not sure why `end` is triggered here like 10 times.
-WAAWritable.prototype.end = function () {
-	if (this.isEnded) return;
-
-	this.isEnded = true;
-
-	var triggered = false;
-	this.once('end', () => {
-		triggered = true;
-	});
-	Writable.prototype.end.call(this);
-
-	//timeout cb, because native end emits after a tick
-	setTimeout(() => {
-		if (!triggered) {
-			this.emit('end');
-		}
-	});
-
-	return this;
-};
-
-},{"./write":81,"inherits":45,"stream":113}],81:[function(require,module,exports){
-/**
- * @module  web-audio-stream/write
- *
- * Write data to web-audio.
- */
-'use strict';
-
-
-const extend = require('object-assign')
-const pcm = require('pcm-util')
-const util = require('audio-buffer-utils')
-const isAudioBuffer = require('is-audio-buffer')
-const AudioBufferList = require('audio-buffer-list')
-
-module.exports = WAAWriter;
-
-
-/**
- * Rendering modes
- */
-WAAWriter.WORKER_MODE = 2;
-WAAWriter.SCRIPT_MODE = 1;
-WAAWriter.BUFFER_MODE = 0;
-
-
-/**
- * @constructor
- */
-function WAAWriter (target, options) {
-	if (!target || !target.context) throw Error('Pass AudioNode instance first argument')
-
-	if (!options) {
-		options = {};
-	}
-
-	options.context = target.context;
-
-	options = extend({
-		/**
-		 * There is an opinion that script mode is better.
-		 * https://github.com/brion/audio-feeder/issues/13
-		 *
-		 * But for me there are moments of glitch when it infinitely cycles sound. Very disappointing and makes feel desperate.
-		 *
-		 * But buffer mode also tend to create noisy clicks. Not sure why, cannot remove that.
-		 * With script mode I at least defer my responsibility.
-		 */
-		mode: WAAWriter.SCRIPT_MODE,
-		samplesPerFrame: pcm.defaults.samplesPerFrame,
-
-		//FIXME: take this from input node
-		channels: pcm.defaults.channels
-	}, options)
-
-	//ensure input format
-	let format = pcm.format(options)
-	pcm.normalize(format)
-
-	let context = options.context;
-	let channels = options.channels;
-	let samplesPerFrame = options.samplesPerFrame;
-	let sampleRate = context.sampleRate;
-	let node, release, isStopped, isEmpty = false;
-
-	//queued data to send to output
-	let data = new AudioBufferList(0, channels)
-
-	//init proper mode
-	if (options.mode === WAAWriter.SCRIPT_MODE) {
-		node = initScriptMode()
-	}
-	else if (options.mode === WAAWriter.BUFFER_MODE) {
-		node = initBufferMode()
-	}
-	else {
-		throw Error('Unknown mode. Choose from BUFFER_MODE or SCRIPT_MODE')
-	}
-
-	//connect node
-	node.connect(target)
-
-	write.end = () => {
-		if (isStopped) return;
-		node.disconnect()
-		isStopped = true;
-	}
-
-	return write;
-
-	//return writer function
-	function write (buffer, cb) {
-		if (isStopped) return;
-
-		if (buffer == null) {
-			return write.end()
-		}
-		else {
-			push(buffer)
-		}
-		release = cb;
-	}
-
-
-	//push new data for the next WAA dinner
-	function push (chunk) {
-		if (!isAudioBuffer(chunk)) {
-			chunk = util.create(chunk, channels)
-		}
-
-		data.append(chunk)
-
-		isEmpty = false;
-	}
-
-	//get last ready data
-	function shift (size) {
-		size = size || samplesPerFrame;
-
-		//if still empty - return existing buffer
-		if (isEmpty) return data;
-
-		let output = data.slice(0, size)
-
-		data.consume(size)
-
-		//if size is too small, fill with silence
-		if (output.length < size) {
-			output = util.pad(output, size)
-		}
-
-		return output;
-	}
-
-	/**
-	 * Init scriptProcessor-based rendering.
-	 * Each audioprocess event triggers tick, which releases pipe
-	 */
-	function initScriptMode () {
-		//buffer source node
-		let bufferNode = context.createBufferSource()
-		bufferNode.loop = true;
-		bufferNode.buffer = util.create(samplesPerFrame, channels, {context: context})
-
-		node = context.createScriptProcessor(samplesPerFrame)
-		node.addEventListener('audioprocess', function (e) {
-			//release causes synchronous pulling the pipeline
-			//so that we get a new data chunk
-			let cb = release;
-			release = null;
-			cb && cb()
-
-			if (isStopped) return;
-
-			util.copy(shift(e.inputBuffer.length), e.outputBuffer)
-		})
-
-		//start should be done after the connection, or there is a chance it won’t
-		bufferNode.connect(node)
-		bufferNode.start()
-
-		return node;
-	}
-
-
-	/**
-	 * Buffer-based rendering.
-	 * The schedule is triggered by setTimeout.
-	 */
-	function initBufferMode () {
-		//how many times output buffer contains input one
-		let FOLD = 2;
-
-		//buffer source node
-		node = context.createBufferSource()
-		node.loop = true;
-		node.buffer = util.create(samplesPerFrame * FOLD, channels, {context: node.context})
-
-		//output buffer
-		let buffer = node.buffer;
-
-		//audio buffer realtime ticked cycle
-		//FIXME: find a way to receive target starving callback here instead of unguaranteed timeouts
-		setTimeout(tick)
-
-		node.start()
-
-		//last played count, position from which there is no data filled up
-		let lastCount = 0;
-
-		//time of start
-		//FIXME: find out why and how this magic coefficient affects buffer scheduling
-		let initTime = context.currentTime;
-
-		return node;
-
-		//tick function - if the half-buffer is passed - emit the tick event, which will fill the buffer
-		function tick (a) {
-			if (isStopped) return;
-
-			let playedTime = context.currentTime - initTime;
-			let playedCount = playedTime * sampleRate;
-
-			//if offset has changed - notify processor to provide a new piece of data
-			if (lastCount - playedCount < samplesPerFrame) {
-				//send queued data chunk to buffer
-				util.copy(shift(samplesPerFrame), buffer, lastCount % buffer.length)
-
-				//increase rendered count
-				lastCount += samplesPerFrame;
-
-				//if there is a holding pressure control - release it
-				if (release) {
-					let cb = release;
-					release = null;
-					cb()
-				}
-
-				//call tick extra-time in case if there is a room for buffer
-				//it will plan timeout, if none
-				tick()
-			}
-			//else plan tick for the expected time of starving
-			else {
-				//time of starving is when played time reaches (last count time) - half-duration
-				let starvingTime = (lastCount - samplesPerFrame) / sampleRate;
-				let remainingTime = starvingTime - playedTime;
-				setTimeout(tick, remainingTime * 1000)
-			}
-		}
-	}
-}
-
-},{"audio-buffer-list":4,"audio-buffer-utils":5,"is-audio-buffer":46,"object-assign":59,"pcm-util":76}],82:[function(require,module,exports){
-module.exports = extend
-
-var hasOwnProperty = Object.prototype.hasOwnProperty;
-
-function extend(target) {
-    for (var i = 1; i < arguments.length; i++) {
-        var source = arguments[i]
-
-        for (var key in source) {
-            if (hasOwnProperty.call(source, key)) {
-                target[key] = source[key]
-            }
-        }
-    }
-
-    return target
-}
-
-},{}],83:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 'use strict';
 
 var alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_'.split('')
@@ -10700,20 +7421,13 @@ yeast.encode = encode;
 yeast.decode = decode;
 module.exports = yeast;
 
-},{}],84:[function(require,module,exports){
-const { Readable, Writable } = require('web-audio-stream/stream')
-const context = require('audio-context')
-const Generator = require('audio-generator');
+},{}],50:[function(require,module,exports){
+var getUserMedia = require('get-user-media-promise');
+var MicrophoneStream = require('microphone-stream');
+
 var pcm = require('pcm-util');
-var toBuffer = require('blob-to-buffer');
 var AudioContext = window.AudioContext || window.webkitAudioContext;
 var Trans = require('./trans');
-
-const mic = require('mic');
-
-const trans = new Trans({
-  sourceSampleRate: 44100
-});
 
 var io = require('socket.io-client');
 var socket = io('http://localhost:3000');
@@ -10757,95 +7471,59 @@ var mediaConstraints = {
   video: true
 };
 
-var mediaConstraints = {
-  audio: true
-};
-
-navigator.getUserMedia(mediaConstraints, onMediaSuccess, onMediaError);
-
-const index = 0;
-
 function buf2hex(buffer) { // buffer is an ArrayBuffer
   return Array.prototype.map.call(buffer, function(byte) {
     return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-  }).join('');}
+  }).join('');
+}
 
-function onMediaSuccess(stream) {
-  var mediaRecorder = new MediaStreamRecorder(stream);
-  mediaRecorder.mimeType = 'audio/wav'; // check this line for audio/pcm
-  mediaRecorder.audioChannels = 1;
-  mediaRecorder.sampleRate = 44100;
-  // mediaRecorder.speed = 200;
+var micStream = new MicrophoneStream({
+  bufferSize: 2048
+});
+var trans = new Trans();
 
-  mediaRecorder.ondataavailable = function (blob) {
-    // POST/PUT "Blob" using FormData/XHR2
-    var blobURL = URL.createObjectURL(blob);
-    let div = document.createElement('div');
-    div.innerHTML = '<audio controls src="' + blobURL + '">' + blobURL + '</audio>';
-    audioBox.appendChild(div);
-
-
-    toBuffer(blob, function (err, buffer) {
-      if (err) {
-        console.log('error in toBuffer: ', err);
-      }
-
-      const source = trans.downsample(buffer); 
-      const pcmData = trans.floatTo16BitPCM(source);   
+record.addEventListener('click', function() {
+ 
+  getUserMedia({ video: false, audio: true })
+    .then(function(stream) {
+      micStream.setStream(stream);
+    }).catch(function(error) {
+      console.log('error in getUserMedia: ', error);
+    });
+ 
+  // get Buffers (Essentially a Uint8Array DataView of the same Float32 values)
+  micStream.on('data', function(chunk) {
+    // Optionally convert the Buffer back into a Float32Array
+    // (This actually just creates a new DataView - the underlying audio data is not copied or modified.)
+    const raw = MicrophoneStream.toRaw(chunk)
+    // const source = trans.downsample(chunk);
+    const buffer = trans.floatTo16BitPCM(raw);
+    //...
+ 
+    // note: if you set options.objectMode=true, the `data` event will output AudioBuffers instead of Buffers
+    console.log('chunk on data: ', chunk.length, typeof buffer, buffer.length, buffer);
     
-      console.log('source in req: ', source);
-      const reqData = buf2hex(pcmData);
-      
-      // console.log('reqData in req: ', reqData);
-      socket.emit('request', {
-        data: pcmData,
-        end: false
-      });
-    })
-  };
-
-  console.log('stream data: ', );
-
-  record.addEventListener('click', function() {
-    mediaRecorder.start(1000);
-
-    // var ctx = new context({
-    //   sampleRate: 48000,
-    //   offline: true,
-    //   length: 10000
-    // });
-    // var getSound = new XMLHttpRequest();
-    // getSound.open("GET", "./media/test.wav", true);
-    // getSound.responseType = "arraybuffer";
-    // getSound.onload = function() {
-    //   ctx.decodeAudioData(getSound.response, function(buffer){
-    //     console.log('get audio buffer: ', buffer);
-    //   });
-    // }
-    // getSound.send();
+    socket.emit('request', {
+      data: buffer,
+      end: false
+    });
+   });
+ 
+  // or pipe it to another stream
+  // micStream.pipe(/*...*/);
+ 
+  // It also emits a format event with various details (frequency, channels, etc)
+  micStream.on('format', function(format) {
+    console.log('format: ', format);
   });
-  
-  stop.addEventListener('click', function() {
-    //
-    mediaRecorder.save();
-    mediaRecorder.stop();
-  });
+ 
+});
 
-  // mediaRecorder.on('data', data => {
-  //   console.log('mediaRecorder data: ', data);
-  // }).on('end', () => {
-  //   console.log('mediaRecorder ended.');
-  // }).on('error', (err) => {
-  //   console.log('mediaRecorder error: ', err);
-  // })
-}
+stop.addEventListener('click', function() {
+  micStream.stop();
+});
 
-function onMediaError(e) {
-  console.error('media error', e);
-}
-
-
-},{"./trans":85,"audio-context":7,"audio-generator":12,"blob-to-buffer":17,"mic":54,"pcm-util":62,"socket.io-client":65,"web-audio-stream/stream":79}],85:[function(require,module,exports){
+},{"./trans":51,"get-user-media-promise":27,"microphone-stream":33,"pcm-util":38,"socket.io-client":40}],51:[function(require,module,exports){
 (function (process){
 'use strict';
 var Transform = require('stream').Transform;
@@ -11056,7 +7734,7 @@ WebAudioL16Stream.prototype.transformBuffer = function(nodebuffer, encoding, nex
 module.exports = WebAudioL16Stream;
 
 }).call(this,require('_process'))
-},{"_process":98,"buffer-from":19,"defaults":29,"stream":113,"util":118}],86:[function(require,module,exports){
+},{"_process":63,"buffer-from":7,"defaults":14,"stream":78,"util":83}],52:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -11209,11 +7887,9 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],87:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 
-},{}],88:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],89:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -12951,7 +9627,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":86,"ieee754":92}],90:[function(require,module,exports){
+},{"base64-js":52,"ieee754":57}],55:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -13062,7 +9738,7 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":94}],91:[function(require,module,exports){
+},{"../../is-buffer/index.js":59}],56:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -13583,7 +10259,7 @@ function functionBindPolyfill(context) {
   };
 }
 
-},{}],92:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = (nBytes * 8) - mLen - 1
@@ -13669,13 +10345,57 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],93:[function(require,module,exports){
-arguments[4][45][0].apply(exports,arguments)
-},{"dup":45}],94:[function(require,module,exports){
-arguments[4][48][0].apply(exports,arguments)
-},{"dup":48}],95:[function(require,module,exports){
-arguments[4][53][0].apply(exports,arguments)
-},{"dup":53}],96:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
+if (typeof Object.create === 'function') {
+  // implementation from standard node.js 'util' module
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    ctor.prototype = Object.create(superCtor.prototype, {
+      constructor: {
+        value: ctor,
+        enumerable: false,
+        writable: true,
+        configurable: true
+      }
+    });
+  };
+} else {
+  // old school shim for old browsers
+  module.exports = function inherits(ctor, superCtor) {
+    ctor.super_ = superCtor
+    var TempCtor = function () {}
+    TempCtor.prototype = superCtor.prototype
+    ctor.prototype = new TempCtor()
+    ctor.prototype.constructor = ctor
+  }
+}
+
+},{}],59:[function(require,module,exports){
+/*!
+ * Determine if an object is a Buffer
+ *
+ * @author   Feross Aboukhadijeh <https://feross.org>
+ * @license  MIT
+ */
+
+// The _isBuffer check is for Safari 5-7 support, because it's missing
+// Object.prototype.constructor. Remove this eventually
+module.exports = function (obj) {
+  return obj != null && (isBuffer(obj) || isSlowBuffer(obj) || !!obj._isBuffer)
+}
+
+function isBuffer (obj) {
+  return !!obj.constructor && typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj)
+}
+
+// For Node v0.10 support. Remove this eventually.
+function isSlowBuffer (obj) {
+  return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
+}
+
+},{}],60:[function(require,module,exports){
+arguments[4][32][0].apply(exports,arguments)
+},{"dup":32}],61:[function(require,module,exports){
 exports.endianness = function () { return 'LE' };
 
 exports.hostname = function () {
@@ -13726,7 +10446,7 @@ exports.homedir = function () {
 	return '/'
 };
 
-},{}],97:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -13774,7 +10494,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 
 
 }).call(this,require('_process'))
-},{"_process":98}],98:[function(require,module,exports){
+},{"_process":63}],63:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -13960,10 +10680,10 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],99:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 module.exports = require('./lib/_stream_duplex.js');
 
-},{"./lib/_stream_duplex.js":100}],100:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":65}],65:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -14095,7 +10815,7 @@ Duplex.prototype._destroy = function (err, cb) {
 
   pna.nextTick(cb, err);
 };
-},{"./_stream_readable":102,"./_stream_writable":104,"core-util-is":90,"inherits":93,"process-nextick-args":97}],101:[function(require,module,exports){
+},{"./_stream_readable":67,"./_stream_writable":69,"core-util-is":55,"inherits":58,"process-nextick-args":62}],66:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -14143,7 +10863,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":103,"core-util-is":90,"inherits":93}],102:[function(require,module,exports){
+},{"./_stream_transform":68,"core-util-is":55,"inherits":58}],67:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -15165,7 +11885,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":100,"./internal/streams/BufferList":105,"./internal/streams/destroy":106,"./internal/streams/stream":107,"_process":98,"core-util-is":90,"events":91,"inherits":93,"isarray":95,"process-nextick-args":97,"safe-buffer":112,"string_decoder/":114,"util":87}],103:[function(require,module,exports){
+},{"./_stream_duplex":65,"./internal/streams/BufferList":70,"./internal/streams/destroy":71,"./internal/streams/stream":72,"_process":63,"core-util-is":55,"events":56,"inherits":58,"isarray":60,"process-nextick-args":62,"safe-buffer":77,"string_decoder/":79,"util":53}],68:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -15380,7 +12100,7 @@ function done(stream, er, data) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":100,"core-util-is":90,"inherits":93}],104:[function(require,module,exports){
+},{"./_stream_duplex":65,"core-util-is":55,"inherits":58}],69:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -16070,7 +12790,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":100,"./internal/streams/destroy":106,"./internal/streams/stream":107,"_process":98,"core-util-is":90,"inherits":93,"process-nextick-args":97,"safe-buffer":112,"util-deprecate":115}],105:[function(require,module,exports){
+},{"./_stream_duplex":65,"./internal/streams/destroy":71,"./internal/streams/stream":72,"_process":63,"core-util-is":55,"inherits":58,"process-nextick-args":62,"safe-buffer":77,"util-deprecate":80}],70:[function(require,module,exports){
 'use strict';
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -16150,7 +12870,7 @@ if (util && util.inspect && util.inspect.custom) {
     return this.constructor.name + ' ' + obj;
   };
 }
-},{"safe-buffer":112,"util":87}],106:[function(require,module,exports){
+},{"safe-buffer":77,"util":53}],71:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -16225,13 +12945,13 @@ module.exports = {
   destroy: destroy,
   undestroy: undestroy
 };
-},{"process-nextick-args":97}],107:[function(require,module,exports){
+},{"process-nextick-args":62}],72:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":91}],108:[function(require,module,exports){
+},{"events":56}],73:[function(require,module,exports){
 module.exports = require('./readable').PassThrough
 
-},{"./readable":109}],109:[function(require,module,exports){
+},{"./readable":74}],74:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -16240,13 +12960,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":100,"./lib/_stream_passthrough.js":101,"./lib/_stream_readable.js":102,"./lib/_stream_transform.js":103,"./lib/_stream_writable.js":104}],110:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":65,"./lib/_stream_passthrough.js":66,"./lib/_stream_readable.js":67,"./lib/_stream_transform.js":68,"./lib/_stream_writable.js":69}],75:[function(require,module,exports){
 module.exports = require('./readable').Transform
 
-},{"./readable":109}],111:[function(require,module,exports){
+},{"./readable":74}],76:[function(require,module,exports){
 module.exports = require('./lib/_stream_writable.js');
 
-},{"./lib/_stream_writable.js":104}],112:[function(require,module,exports){
+},{"./lib/_stream_writable.js":69}],77:[function(require,module,exports){
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
 var Buffer = buffer.Buffer
@@ -16310,7 +13030,7 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":89}],113:[function(require,module,exports){
+},{"buffer":54}],78:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -16439,7 +13159,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":91,"inherits":93,"readable-stream/duplex.js":99,"readable-stream/passthrough.js":108,"readable-stream/readable.js":109,"readable-stream/transform.js":110,"readable-stream/writable.js":111}],114:[function(require,module,exports){
+},{"events":56,"inherits":58,"readable-stream/duplex.js":64,"readable-stream/passthrough.js":73,"readable-stream/readable.js":74,"readable-stream/transform.js":75,"readable-stream/writable.js":76}],79:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -16736,7 +13456,7 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":112}],115:[function(require,module,exports){
+},{"safe-buffer":77}],80:[function(require,module,exports){
 (function (global){
 
 /**
@@ -16807,16 +13527,16 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],116:[function(require,module,exports){
-arguments[4][45][0].apply(exports,arguments)
-},{"dup":45}],117:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
+arguments[4][58][0].apply(exports,arguments)
+},{"dup":58}],82:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],118:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -17406,4 +14126,4 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":117,"_process":98,"inherits":116}]},{},[84]);
+},{"./support/isBuffer":82,"_process":63,"inherits":81}]},{},[50]);

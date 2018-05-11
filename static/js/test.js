@@ -1,16 +1,9 @@
-const { Readable, Writable } = require('web-audio-stream/stream')
-const context = require('audio-context')
-const Generator = require('audio-generator');
+var getUserMedia = require('get-user-media-promise');
+var MicrophoneStream = require('microphone-stream');
+
 var pcm = require('pcm-util');
-var toBuffer = require('blob-to-buffer');
 var AudioContext = window.AudioContext || window.webkitAudioContext;
 var Trans = require('./trans');
-
-const mic = require('mic');
-
-const trans = new Trans({
-  sourceSampleRate: 44100
-});
 
 var io = require('socket.io-client');
 var socket = io('http://localhost:3000');
@@ -54,90 +47,54 @@ var mediaConstraints = {
   video: true
 };
 
-var mediaConstraints = {
-  audio: true
-};
-
-navigator.getUserMedia(mediaConstraints, onMediaSuccess, onMediaError);
-
-const index = 0;
-
 function buf2hex(buffer) { // buffer is an ArrayBuffer
   return Array.prototype.map.call(buffer, function(byte) {
     return ('0' + (byte & 0xFF).toString(16)).slice(-2);
-  }).join('');}
+  }).join('');
+}
 
-function onMediaSuccess(stream) {
-  var mediaRecorder = new MediaStreamRecorder(stream);
-  mediaRecorder.mimeType = 'audio/wav'; // check this line for audio/pcm
-  mediaRecorder.audioChannels = 1;
-  mediaRecorder.sampleRate = 44100;
-  // mediaRecorder.speed = 200;
+var micStream = new MicrophoneStream({
+  bufferSize: 2048
+});
+var trans = new Trans();
 
-  mediaRecorder.ondataavailable = function (blob) {
-    // POST/PUT "Blob" using FormData/XHR2
-    var blobURL = URL.createObjectURL(blob);
-    let div = document.createElement('div');
-    div.innerHTML = '<audio controls src="' + blobURL + '">' + blobURL + '</audio>';
-    audioBox.appendChild(div);
-
-
-    toBuffer(blob, function (err, buffer) {
-      if (err) {
-        console.log('error in toBuffer: ', err);
-      }
-
-      const source = trans.downsample(buffer); 
-      const pcmData = trans.floatTo16BitPCM(source);   
+record.addEventListener('click', function() {
+ 
+  getUserMedia({ video: false, audio: true })
+    .then(function(stream) {
+      micStream.setStream(stream);
+    }).catch(function(error) {
+      console.log('error in getUserMedia: ', error);
+    });
+ 
+  // get Buffers (Essentially a Uint8Array DataView of the same Float32 values)
+  micStream.on('data', function(chunk) {
+    // Optionally convert the Buffer back into a Float32Array
+    // (This actually just creates a new DataView - the underlying audio data is not copied or modified.)
+    const raw = MicrophoneStream.toRaw(chunk)
+    // const source = trans.downsample(chunk);
+    const buffer = trans.floatTo16BitPCM(raw);
+    //...
+ 
+    // note: if you set options.objectMode=true, the `data` event will output AudioBuffers instead of Buffers
+    console.log('chunk on data: ', chunk.length, typeof buffer, buffer.length, buffer);
     
-      console.log('source in req: ', source);
-      const reqData = buf2hex(pcmData);
-      
-      // console.log('reqData in req: ', reqData);
-      socket.emit('request', {
-        data: pcmData,
-        end: false
-      });
-    })
-  };
-
-  console.log('stream data: ', );
-
-  record.addEventListener('click', function() {
-    mediaRecorder.start(1000);
-
-    // var ctx = new context({
-    //   sampleRate: 48000,
-    //   offline: true,
-    //   length: 10000
-    // });
-    // var getSound = new XMLHttpRequest();
-    // getSound.open("GET", "./media/test.wav", true);
-    // getSound.responseType = "arraybuffer";
-    // getSound.onload = function() {
-    //   ctx.decodeAudioData(getSound.response, function(buffer){
-    //     console.log('get audio buffer: ', buffer);
-    //   });
-    // }
-    // getSound.send();
+    socket.emit('request', {
+      data: buffer,
+      end: false
+    });
+   });
+ 
+  // or pipe it to another stream
+  // micStream.pipe(/*...*/);
+ 
+  // It also emits a format event with various details (frequency, channels, etc)
+  micStream.on('format', function(format) {
+    console.log('format: ', format);
   });
-  
-  stop.addEventListener('click', function() {
-    //
-    mediaRecorder.save();
-    mediaRecorder.stop();
-  });
+ 
+});
 
-  // mediaRecorder.on('data', data => {
-  //   console.log('mediaRecorder data: ', data);
-  // }).on('end', () => {
-  //   console.log('mediaRecorder ended.');
-  // }).on('error', (err) => {
-  //   console.log('mediaRecorder error: ', err);
-  // })
-}
-
-function onMediaError(e) {
-  console.error('media error', e);
-}
-
+stop.addEventListener('click', function() {
+  micStream.stop();
+});
