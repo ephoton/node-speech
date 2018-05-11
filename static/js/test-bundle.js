@@ -10798,7 +10798,7 @@ function onMediaSuccess(stream) {
       
       // console.log('reqData in req: ', reqData);
       socket.emit('request', {
-        data: reqData,
+        data: pcmData,
         end: false
       });
     })

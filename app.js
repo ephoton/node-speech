@@ -75,12 +75,14 @@ io.on('connection', function(socket) {
       
       // const byteArray = toByteArray(req.data);
       // console.log('byteArray: ', byteArray);
-      console.log('req.data in server: ', req.data);
-      const bytes = new ByteBuffer.fromHex(req.data, true);
+      const buffer = new Buffer(req.data);
+      console.log('req.data in server: ', buffer.length, buffer);
+      // const bytes = new ByteBuffer.fromHex(req.data, true);
       const queryData = {
         // data: new Buffer(req.data),
-        data: bytes.toBuffer(),
-        eof: req.end ? 1 : 0,
+        data: buffer,
+        // eof: req.end ? 1 : 0,
+        eof: 0,
         deviceId: 'ephotons test',
         audio_type: 'pcm'
       };
