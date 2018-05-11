@@ -7,10 +7,10 @@ const Hbs = require('koa-hbs');
 const StaticCache = require('koa-static-cache');
 const Router = require('koa-router');
 const bodyParser = require('koa-bodyparser');
-const protobuf = require("protobufjs");
-const ByteBuffer = require("bytebuffer");
+// const { Message } = require("protobufjs");
 const Samplerate = require("node-samplerate");;
-const pcm = require('pcm-util')
+const pcm = require('pcm-util');
+const ByteBuffer = require("bytebuffer");
 
 const originalSamplerate = 44100;
 const channels = 1;
@@ -72,10 +72,11 @@ io.on('connection', function(socket) {
     
       // console.log('buffer vs filterData: ', bytes.length, buffer.length);
       // console.log('req data: ', req.data);
-      const bytes = new ByteBuffer.fromHex(req.data);
       
-      const byteArray = toByteArray(req.data);
+      // const byteArray = toByteArray(req.data);
       // console.log('byteArray: ', byteArray);
+      console.log('req.data in server: ', req.data);
+      const bytes = new ByteBuffer.fromHex(req.data, true);
       const queryData = {
         // data: new Buffer(req.data),
         data: bytes.toBuffer(),

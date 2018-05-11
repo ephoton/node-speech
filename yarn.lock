@@ -864,6 +864,10 @@ methods@^1.0.1:
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/methods/-/methods-1.1.2.tgz#5529a4d67654134edcc5266656835b0f851afcee"
 
+mic@^2.1.2:
+  version "2.1.2"
+  resolved "https://registry.yarnpkg.com/mic/-/mic-2.1.2.tgz#f03428381798ff889a90405a0318151db054a4ed"
+
 "mime-db@>= 1.33.0 < 2", mime-db@~1.33.0:
   version "1.33.0"
   resolved "https://registry.yarnpkg.com/mime-db/-/mime-db-1.33.0.tgz#a3492050a5cb9b63450541e39d9788d2272783db"

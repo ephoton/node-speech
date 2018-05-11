@@ -1,8 +1,16 @@
 const { Readable, Writable } = require('web-audio-stream/stream')
-// const context = require('audio-context')
+const context = require('audio-context')
 const Generator = require('audio-generator');
 var pcm = require('pcm-util');
 var toBuffer = require('blob-to-buffer');
+var AudioContext = window.AudioContext || window.webkitAudioContext;
+var Trans = require('./trans');
+
+const mic = require('mic');
+
+const trans = new Trans({
+  sourceSampleRate: 44100
+});
 
 var io = require('socket.io-client');
 var socket = io('http://localhost:3000');
@@ -61,43 +69,62 @@ function buf2hex(buffer) { // buffer is an ArrayBuffer
 
 function onMediaSuccess(stream) {
   var mediaRecorder = new MediaStreamRecorder(stream);
-  mediaRecorder.mimeType = 'audio/pcm'; // check this line for audio/pcm
+  mediaRecorder.mimeType = 'audio/wav'; // check this line for audio/pcm
   mediaRecorder.audioChannels = 1;
-  mediaRecorder.sampleRate = 16000;
+  mediaRecorder.sampleRate = 44100;
   // mediaRecorder.speed = 200;
 
   mediaRecorder.ondataavailable = function (blob) {
-      // POST/PUT "Blob" using FormData/XHR2
-      console.log('MediaStreamRecorder ondataavailable blob: ', blob);
-      var blobURL = URL.createObjectURL(blob);
-      let div = document.createElement('div');
-      div.innerHTML = '<a target="_blank" href="' + blobURL + '">' + blobURL + '</a>';
-      audioBox.appendChild(div);
+    // POST/PUT "Blob" using FormData/XHR2
+    var blobURL = URL.createObjectURL(blob);
+    let div = document.createElement('div');
+    div.innerHTML = '<audio controls src="' + blobURL + '">' + blobURL + '</audio>';
+    audioBox.appendChild(div);
 
-      toBuffer(blob, function (err, buffer) {
-        if (err) {
-          console.log('error in toBuffer: ', err);
-        }
 
-        const reqData = buf2hex(buffer);
+    toBuffer(blob, function (err, buffer) {
+      if (err) {
+        console.log('error in toBuffer: ', err);
+      }
+
+      const source = trans.downsample(buffer); 
+      const pcmData = trans.floatTo16BitPCM(source);   
+    
+      console.log('source in req: ', source);
+      const reqData = buf2hex(pcmData);
       
-        console.log('blob to buffer: ', reqData);
-        socket.emit('request', {
-          data: reqData,
-          end: false
-        });
-      })
+      // console.log('reqData in req: ', reqData);
+      socket.emit('request', {
+        data: reqData,
+        end: false
+      });
+    })
   };
 
   console.log('stream data: ', );
 
   record.addEventListener('click', function() {
-    //
     mediaRecorder.start(1000);
+
+    // var ctx = new context({
+    //   sampleRate: 48000,
+    //   offline: true,
+    //   length: 10000
+    // });
+    // var getSound = new XMLHttpRequest();
+    // getSound.open("GET", "./media/test.wav", true);
+    // getSound.responseType = "arraybuffer";
+    // getSound.onload = function() {
+    //   ctx.decodeAudioData(getSound.response, function(buffer){
+    //     console.log('get audio buffer: ', buffer);
+    //   });
+    // }
+    // getSound.send();
   });
   
   stop.addEventListener('click', function() {
     //
+    mediaRecorder.save();
     mediaRecorder.stop();
   });
 

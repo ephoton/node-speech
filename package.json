@@ -25,6 +25,7 @@
     "koa-hbs": "^1.0.0",
     "koa-router": "^7.4.0",
     "koa-static-cache": "^5.1.2",
+    "mic": "^2.1.2",
     "node-samplerate": "^0.2.1",
     "node-wav": "^0.0.2",
     "pcm-convert": "^1.6.5",
